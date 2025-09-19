@@ -16,7 +16,9 @@ void RunInteractiveMode()
     Console.WriteLine();
 
     using var db = new SimpleDatabase();
-    db.LoadIndexWithFeedback();
+    
+    // Load index with feedback
+    LoadIndexWithFeedback();
 
     while (true)
     {
@@ -44,7 +46,10 @@ void RunInteractiveMode()
 void RunCommandLineMode(string[] args)
 {
     using var db = new SimpleDatabase();
-    db.LoadIndexWithFeedback();
+    
+    // Load index with feedback
+    LoadIndexWithFeedback();
+    
     ExecuteCommand(db, args);
 }
 
@@ -255,5 +260,21 @@ string[] ParseCommandLine(string input)
     }
 
     return parts.ToArray();
+}
+
+void LoadIndexWithFeedback()
+{
+    if (File.Exists("database.idx"))
+    {
+        Console.Write("Loading database index");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        
+        IndexCache.GetWithFeedback("database.idx", (message) => {
+            Console.Write(".");
+        });
+        
+        sw.Stop();
+        Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
+    }
 }
 

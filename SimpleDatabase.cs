@@ -8,7 +8,6 @@ public class SimpleDatabase : IDisposable
     private readonly string dataFile;
     private readonly string indexFile;
     private bool disposed;
-    private bool indexLoaded;
 
     public SimpleDatabase(string dataFile = "database.bin", string indexFile = "database.idx")
     {
@@ -16,22 +15,6 @@ public class SimpleDatabase : IDisposable
         this.indexFile = indexFile;
     }
 
-    public void LoadIndexWithFeedback()
-    {
-        if (!indexLoaded && File.Exists(indexFile))
-        {
-            Console.Write("Loading database index");
-            var sw = Stopwatch.StartNew();
-            
-            IndexCache.GetWithFeedback(indexFile, (message) => {
-                Console.Write(".");
-            });
-            
-            sw.Stop();
-            Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
-            indexLoaded = true;
-        }
-    }
 
     public void Set(string key, string value)
     {
