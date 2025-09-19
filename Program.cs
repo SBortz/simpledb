@@ -16,6 +16,7 @@ void RunInteractiveMode()
     Console.WriteLine();
 
     using var db = new SimpleDatabase();
+    db.LoadIndexWithFeedback();
 
     while (true)
     {
@@ -43,6 +44,7 @@ void RunInteractiveMode()
 void RunCommandLineMode(string[] args)
 {
     using var db = new SimpleDatabase();
+    db.LoadIndexWithFeedback();
     ExecuteCommand(db, args);
 }
 

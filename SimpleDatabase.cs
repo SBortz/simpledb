@@ -7,19 +7,18 @@ public class SimpleDatabase : IDisposable
 {
     private readonly string dataFile;
     private readonly string indexFile;
-    private bool _disposed;
-    private bool _indexLoaded = false;
+    private bool disposed;
+    private bool indexLoaded;
 
     public SimpleDatabase(string dataFile = "database.bin", string indexFile = "database.idx")
     {
         this.dataFile = dataFile;
         this.indexFile = indexFile;
-        LoadIndexWithFeedback();
     }
 
-    private void LoadIndexWithFeedback()
+    public void LoadIndexWithFeedback()
     {
-        if (!_indexLoaded && File.Exists(indexFile))
+        if (!indexLoaded && File.Exists(indexFile))
         {
             Console.Write("Loading database index");
             var sw = Stopwatch.StartNew();
@@ -30,7 +29,7 @@ public class SimpleDatabase : IDisposable
             
             sw.Stop();
             Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
-            _indexLoaded = true;
+            indexLoaded = true;
         }
     }
 
@@ -162,10 +161,10 @@ public class SimpleDatabase : IDisposable
 
     public void Dispose()
     {
-        if (!_disposed)
+        if (!disposed)
         {
             // Cleanup falls nötig
-            _disposed = true;
+            disposed = true;
         }
     }
 }
