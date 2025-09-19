@@ -94,63 +94,6 @@ public class SimpleDatabase : IDisposable
         return last;
     }
 
-    public (long entries, string lastKey, long dataBytes) Fill(long targetBytes, int minLen, int maxLen)
-    {
-        using var fs = new FileStream(dataFile, FileMode.Append, FileAccess.Write, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
-        using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
-        using var fi = new FileStream(indexFile, FileMode.Append, FileAccess.Write, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
-        using var iw = new BinaryWriter(fi, Encoding.UTF8, leaveOpen: true);
-
-        var rnd = Random.Shared;
-        var sb = new StringBuilder(maxLen);
-        int keyNum = 1;
-        long entries = 0;
-
-        while (fs.Length < targetBytes)
-        {
-            int len = rnd.Next(minLen, maxLen + 1);
-            sb.Clear();
-            sb.Append('v').Append(keyNum).Append('-');
-            while (sb.Length < len) sb.Append('x');
-            
-            string key = $"key{keyNum}";
-            string value = sb.ToString();
-            byte[] keyData = Encoding.UTF8.GetBytes(key);
-            byte[] valueData = Encoding.UTF8.GetBytes(value);
-
-            long off = fs.Position;
-            bw.Write(keyData.Length);
-            bw.Write(keyData);
-            bw.Write(valueData.Length);
-            bw.Write(valueData);
-
-            iw.Write(keyData.Length);
-            iw.Write(keyData);
-            iw.Write(off);
-
-            // Index-Cache aktualisieren
-            IndexCache.Add(key, off);
-
-            entries++;
-            if ((keyNum & 0x3FFF) == 0) { bw.Flush(); iw.Flush(); }
-
-            keyNum++;
-        }
-
-        bw.Flush(); iw.Flush();
-        
-        // Update metadata after fill to prevent full reload
-        if (entries > 0)
-        {
-            var indexFileInfo = new FileInfo(indexFile);
-            if (indexFileInfo.Exists)
-            {
-                IndexCache.UpdateMetadata(indexFileInfo.Length, indexFileInfo.LastWriteTimeUtc);
-            }
-        }
-        
-        return (entries, $"key{keyNum - 1}", fs.Length);
-    }
 
     public void Clear()
     {

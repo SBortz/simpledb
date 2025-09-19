@@ -77,8 +77,48 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
             long size = args.Length >= 2 ? Utils.ParseSize(args[1]) : (2L << 30);
             int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
             int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
-            var (entries, lastKey, bytes) = db.Fill(size, minLen, maxLen);
-            Console.WriteLine($"Filled {entries:N0} entries, lastKey={lastKey}, data={Utils.FormatSize(bytes)}");
+            
+            Console.WriteLine("Filling database...");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            
+            var rnd = Random.Shared;
+            var sb = new StringBuilder(maxLen);
+            int keyNum = 1;
+            long entries = 0;
+            long currentSize = 0;
+            
+            // Get current database size
+            if (File.Exists("database.bin"))
+            {
+                currentSize = new FileInfo("database.bin").Length;
+            }
+            
+            while (currentSize < size)
+            {
+                int len = rnd.Next(minLen, maxLen + 1);
+                sb.Clear();
+                sb.Append('v').Append(keyNum).Append('-');
+                while (sb.Length < len) sb.Append('x');
+                
+                string key = $"key{keyNum}";
+                string value = sb.ToString();
+                
+                db.Set(key, value);
+                
+                entries++;
+                currentSize += key.Length + value.Length + 16; // Rough estimate
+                
+                // Progress feedback every 10000 entries
+                if (entries % 10000 == 0)
+                {
+                    Console.WriteLine($"Filled {entries:N0} entries, current size: {Utils.FormatSize(currentSize)}");
+                }
+                
+                keyNum++;
+            }
+            
+            sw.Stop();
+            Console.WriteLine($"Filled {entries:N0} entries, lastKey=key{keyNum - 1}, data={Utils.FormatSize(currentSize)} in {sw.Elapsed.TotalSeconds:F2}s");
             break;
         }
 
@@ -91,12 +131,36 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
             // fresh start
             db.Clear();
 
+            Console.WriteLine("Filling database for benchmark...");
             var sw = Stopwatch.StartNew();
-            var (entries, lastKey, bytes) = db.Fill(size, minLen, maxLen);
+            
+            var rnd = Random.Shared;
+            var sb = new StringBuilder(maxLen);
+            int keyNum = 1;
+            long entries = 0;
+            long currentSize = 0;
+            
+            while (currentSize < size)
+            {
+                int len = rnd.Next(minLen, maxLen + 1);
+                sb.Clear();
+                sb.Append('v').Append(keyNum).Append('-');
+                while (sb.Length < len) sb.Append('x');
+                
+                string key = $"key{keyNum}";
+                string value = sb.ToString();
+                
+                db.Set(key, value);
+                
+                entries++;
+                currentSize += key.Length + value.Length + 16; // Rough estimate
+                keyNum++;
+            }
+            
             sw.Stop();
-            Console.WriteLine($"fill:     {sw.Elapsed.TotalSeconds:F2}s  ({entries:N0} entries, {Utils.FormatSize(bytes)})");
+            Console.WriteLine($"fill:     {sw.Elapsed.TotalSeconds:F2}s  ({entries:N0} entries, {Utils.FormatSize(currentSize)})");
 
-            string benchKey = args.Length >= 5 ? args[4] : lastKey;
+            string benchKey = args.Length >= 5 ? args[4] : $"key{keyNum - 1}";
 
             // Warmup (JIT)
             _ = db.GetIndexed(benchKey);
