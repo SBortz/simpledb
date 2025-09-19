@@ -10,9 +10,15 @@ public static class Utils
     public static long ParseSize(string s)
     {
         s = s.Trim().ToLowerInvariant();
+        
+        // Handle common size suffixes
+        if (s.EndsWith("gb")) return (long)(double.Parse(s[..^2]) * (1L << 30));
+        if (s.EndsWith("mb")) return (long)(double.Parse(s[..^2]) * (1L << 20));
+        if (s.EndsWith("kb")) return (long)(double.Parse(s[..^2]) * 1024L);
         if (s.EndsWith("g")) return (long)(double.Parse(s[..^1]) * (1L << 30));
         if (s.EndsWith("m")) return (long)(double.Parse(s[..^1]) * (1L << 20));
         if (s.EndsWith("k")) return (long)(double.Parse(s[..^1]) * 1024L);
+        
         return long.Parse(s);
     }
 

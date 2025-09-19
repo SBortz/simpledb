@@ -3,10 +3,36 @@ using System.Text;
 
 namespace MicroDb;
 
-public class SimpleDatabase(string dataFile = "database.bin", string indexFile = "database.idx")
-    : IDisposable
+public class SimpleDatabase : IDisposable
 {
+    private readonly string dataFile;
+    private readonly string indexFile;
     private bool _disposed;
+    private bool _indexLoaded = false;
+
+    public SimpleDatabase(string dataFile = "database.bin", string indexFile = "database.idx")
+    {
+        this.dataFile = dataFile;
+        this.indexFile = indexFile;
+        LoadIndexWithFeedback();
+    }
+
+    private void LoadIndexWithFeedback()
+    {
+        if (!_indexLoaded && File.Exists(indexFile))
+        {
+            Console.Write("Loading database index");
+            var sw = Stopwatch.StartNew();
+            
+            IndexCache.GetWithFeedback(indexFile, (message) => {
+                Console.Write(".");
+            });
+            
+            sw.Stop();
+            Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
+            _indexLoaded = true;
+        }
+    }
 
     public void Set(string key, string value)
     {
@@ -28,7 +54,7 @@ public class SimpleDatabase(string dataFile = "database.bin", string indexFile =
         iw.Write(keyData.Length);
         iw.Write(keyData);
         iw.Write(offset);
-        IndexCache.Add(key, offset);   // <— Cache aktuell halten
+        IndexCache.AddAndUpdateMetadata(key, offset, indexFile);   // <— Cache aktuell halten
     }
 
     public string? GetIndexed(string searchKey)
@@ -103,6 +129,9 @@ public class SimpleDatabase(string dataFile = "database.bin", string indexFile =
             iw.Write(keyData);
             iw.Write(off);
 
+            // Index-Cache aktualisieren
+            IndexCache.Add(key, off);
+
             entries++;
             if ((keyNum & 0x3FFF) == 0) { bw.Flush(); iw.Flush(); }
 
@@ -110,6 +139,17 @@ public class SimpleDatabase(string dataFile = "database.bin", string indexFile =
         }
 
         bw.Flush(); iw.Flush();
+        
+        // Update metadata after fill to prevent full reload
+        if (entries > 0)
+        {
+            var indexFileInfo = new FileInfo(indexFile);
+            if (indexFileInfo.Exists)
+            {
+                IndexCache.UpdateMetadata(indexFileInfo.Length, indexFileInfo.LastWriteTimeUtc);
+            }
+        }
+        
         return (entries, $"key{keyNum - 1}", fs.Length);
     }
 
