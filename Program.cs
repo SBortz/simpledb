@@ -15,10 +15,11 @@ void RunInteractiveMode()
     Console.WriteLine("Commands: set <key> <value> | get <key> | get-scan <key> | fill [size] [minLen] [maxLen] | bench [size] [minLen] [maxLen] [key] | clear | help | exit");
     Console.WriteLine();
 
-    using var db = new SimpleDatabase();
+    var indexCache = new IndexCache();
+    using var db = new SimpleDatabase(indexCache);
     
     // Load index with feedback
-    LoadIndexWithFeedback();
+    LoadIndexWithFeedback(indexCache);
 
     while (true)
     {
@@ -45,10 +46,11 @@ void RunInteractiveMode()
 
 void RunCommandLineMode(string[] args)
 {
-    using var db = new SimpleDatabase();
+    var indexCache = new IndexCache();
+    using var db = new SimpleDatabase(indexCache);
     
     // Load index with feedback
-    LoadIndexWithFeedback();
+    LoadIndexWithFeedback(indexCache);
     
     ExecuteCommand(db, args);
 }
@@ -262,14 +264,14 @@ string[] ParseCommandLine(string input)
     return parts.ToArray();
 }
 
-void LoadIndexWithFeedback()
+void LoadIndexWithFeedback(IIndexCache indexCache)
 {
     if (File.Exists("database.idx"))
     {
         Console.Write("Loading database index");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         
-        IndexCache.GetWithFeedback("database.idx", (message) => {
+        indexCache.GetWithFeedback("database.idx", (message) => {
             Console.Write(".");
         });
         

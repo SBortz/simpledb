@@ -2,13 +2,13 @@ using System.Text;
 
 namespace MicroDb;
 
-public static class IndexCache
+public class IndexCache : IIndexCache
 {
-    private static Dictionary<string, long>? _dict;
-    private static long _len;
-    private static DateTime _mtime;
+    private Dictionary<string, long>? _dict;
+    private long _len;
+    private DateTime _mtime;
 
-    public static Dictionary<string, long> Get(string indexFile)
+    public Dictionary<string, long> Get(string indexFile)
     {
         if (!File.Exists(indexFile)) return _dict ??= new();
         
@@ -23,7 +23,7 @@ public static class IndexCache
         return LoadIndex(indexFile);
     }
 
-    private static Dictionary<string, long> LoadIndex(string indexFile)
+    private Dictionary<string, long> LoadIndex(string indexFile)
     {
         var fi = new FileInfo(indexFile);
         // einmal laden
@@ -42,7 +42,7 @@ public static class IndexCache
         return _dict;
     }
 
-    public static Dictionary<string, long> GetWithFeedback(string indexFile, Action<string>? feedback = null)
+    public Dictionary<string, long> GetWithFeedback(string indexFile, Action<string>? feedback = null)
     {
         if (!File.Exists(indexFile)) return _dict ??= new();
         var fi = new FileInfo(indexFile);
@@ -80,7 +80,7 @@ public static class IndexCache
         return _dict!;
     }
 
-    public static void Add(string key, long offset)
+    public void Add(string key, long offset)
     {
         if (_dict != null)
         {
@@ -89,7 +89,7 @@ public static class IndexCache
         }
     }
 
-    public static void AddAndUpdateMetadata(string key, long offset, string indexFile)
+    public void AddAndUpdateMetadata(string key, long offset, string indexFile)
     {
         // Ensure dict is initialized
         if (_dict == null)
@@ -109,13 +109,13 @@ public static class IndexCache
         }
     }
 
-    public static void UpdateMetadata(long length, DateTime lastWriteTime)
+    public void UpdateMetadata(long length, DateTime lastWriteTime)
     {
         _len = length;
         _mtime = lastWriteTime;
     }
 
-    public static void Clear()
+    public void Clear()
     {
         _dict = null;
         _len = 0;

@@ -7,10 +7,12 @@ public class SimpleDatabase : IDisposable
 {
     private readonly string dataFile;
     private readonly string indexFile;
+    private readonly IIndexCache indexCache;
     private bool disposed;
 
-    public SimpleDatabase(string dataFile = "database.bin", string indexFile = "database.idx")
+    public SimpleDatabase(IIndexCache indexCache, string dataFile = "database.bin", string indexFile = "database.idx")
     {
+        this.indexCache = indexCache;
         this.dataFile = dataFile;
         this.indexFile = indexFile;
     }
@@ -36,12 +38,12 @@ public class SimpleDatabase : IDisposable
         iw.Write(keyData.Length);
         iw.Write(keyData);
         iw.Write(offset);
-        IndexCache.AddAndUpdateMetadata(key, offset, indexFile);   // <— Cache aktuell halten
+        indexCache.AddAndUpdateMetadata(key, offset, indexFile);   // <— Cache aktuell halten
     }
 
     public string? GetIndexed(string searchKey)
     {
-        var index = IndexCache.Get(indexFile);
+        var index = indexCache.Get(indexFile);
 
         if (!index.TryGetValue(searchKey, out var pos))
             return null;
@@ -82,7 +84,7 @@ public class SimpleDatabase : IDisposable
     {
         if (File.Exists(dataFile)) File.Delete(dataFile);
         if (File.Exists(indexFile)) File.Delete(indexFile);
-        IndexCache.Clear();
+        indexCache.Clear();
     }
 
     public void Dispose()
