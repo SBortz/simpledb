@@ -1,0 +1,150 @@
+﻿using System.Text;
+
+if (args.Length == 0)
+{
+    Console.Error.WriteLine("""
+    Usage:
+      dotnet run -- set <key:int> <value>
+      dotnet run -- get <key:int>
+      dotnet run -- fill [size:2g|2048m|...] [minLen] [maxLen]
+    """);
+    return;
+}
+
+var dataFile = "database.bin";
+var indexFile = "database.idx";
+
+switch (args[0].ToLowerInvariant())
+{
+    case "set":
+        if (args.Length < 3) { Console.Error.WriteLine("set <key> <value>"); return; }
+        Set(int.Parse(args[1]), args[2]);
+        break;
+
+    case "get":
+        if (args.Length < 2) { Console.Error.WriteLine("get <key>"); return; }
+        Get(int.Parse(args[1]));
+        break;
+
+    case "fill":
+        long size = args.Length >= 2 ? ParseSize(args[1]) : (2L << 30);
+        int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
+        int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
+        Fill(size, minLen, maxLen);
+        break;
+
+    default:
+        Console.Error.WriteLine("Unknown command");
+        break;
+}
+
+void Set(int key, string value)
+{
+    byte[] data = Encoding.UTF8.GetBytes(value);
+
+    using var fs = new FileStream(dataFile, FileMode.Append, FileAccess.Write, FileShare.Read);
+    long offset = fs.Position;
+
+    using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
+    bw.Write(key);
+    bw.Write(data.Length);
+    bw.Write(data);
+    bw.Flush();
+
+    using var idx = new FileStream(indexFile, FileMode.Append, FileAccess.Write, FileShare.Read);
+    using var iw = new BinaryWriter(idx);
+    iw.Write(key);
+    iw.Write(offset);
+}
+
+void Get(int searchKey)
+{
+    var index = LoadIndex();
+    if (!index.TryGetValue(searchKey, out var pos))
+    {
+        Console.Error.WriteLine("Key not found");
+        return;
+    }
+
+    using var fd = new FileStream(dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+    using var rd = new BinaryReader(fd);
+    fd.Seek(pos, SeekOrigin.Begin);
+
+    int key = rd.ReadInt32();
+    int len = rd.ReadInt32();
+    var buf = rd.ReadBytes(len);
+
+    Console.WriteLine(Encoding.UTF8.GetString(buf));
+}
+
+void Fill(long targetBytes, int minLen, int maxLen)
+{
+    using var fs = new FileStream(dataFile, FileMode.Append, FileAccess.Write, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+    using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
+    using var fi = new FileStream(indexFile, FileMode.Append, FileAccess.Write, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+    using var iw = new BinaryWriter(fi, Encoding.UTF8, leaveOpen: true);
+
+    var rnd = Random.Shared;
+    var sb = new StringBuilder(maxLen);
+    int key = 1;
+
+    long target = targetBytes;
+    while (fs.Length < target)
+    {
+        int len = rnd.Next(minLen, maxLen + 1);
+        sb.Clear();
+        sb.Append('v').Append(key).Append('-');
+        while (sb.Length < len) sb.Append('x');
+        byte[] data = Encoding.UTF8.GetBytes(sb.ToString());
+
+        long offset = fs.Position;
+        bw.Write(key);
+        bw.Write(data.Length);
+        bw.Write(data);
+
+        iw.Write(key);
+        iw.Write(offset);
+
+        if ((key & 0x3FFF) == 0) { bw.Flush(); iw.Flush(); }
+
+        key++;
+    }
+
+    bw.Flush();
+    iw.Flush();
+    Console.Error.WriteLine($"Filled to {FormatSize(fs.Length)}");
+}
+
+Dictionary<int,long> LoadIndex()
+{
+    var dict = new Dictionary<int,long>();
+    if (!File.Exists(indexFile)) return dict;
+
+    using var fi = new FileStream(indexFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+    using var br = new BinaryReader(fi);
+    while (fi.Position < fi.Length)
+    {
+        int k = br.ReadInt32();
+        long off = br.ReadInt64();
+        dict[k] = off; // letzte Instanz gewinnt
+    }
+    return dict;
+}
+
+static long ParseSize(string s)
+{
+    s = s.Trim().ToLowerInvariant();
+    if (s.EndsWith("g")) return (long)(double.Parse(s[..^1]) * (1L << 30));
+    if (s.EndsWith("m")) return (long)(double.Parse(s[..^1]) * (1L << 20));
+    if (s.EndsWith("k")) return (long)(double.Parse(s[..^1]) * 1024L);
+    return long.Parse(s);
+}
+
+static string FormatSize(long bytes)
+{
+    const double KB = 1024, MB = KB * 1024, GB = MB * 1024;
+    if (bytes >= GB) return $"{bytes / GB:0.##} GiB";
+    if (bytes >= MB) return $"{bytes / MB:0.##} MiB";
+    if (bytes >= KB) return $"{bytes / KB:0.##} KiB";
+    return $"{bytes} B";
+}
