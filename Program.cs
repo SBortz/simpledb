@@ -2,14 +2,11 @@
 using System.Text;
 using MicroDb;
 
-// Prüfe ob wir im interaktiven Modus sind (keine Argumente)
 if (args.Length == 0)
 {
     RunInteractiveMode();
     return;
 }
-
-// Legacy: Command-Line Modus für Kompatibilität
 RunCommandLineMode(args);
 
 void RunInteractiveMode()
