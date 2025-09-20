@@ -1,6 +1,6 @@
-namespace microdb.simpledb;
+namespace MicroDb;
 
-public interface IDbIndex
+public interface IIndexCache
 {
     Dictionary<string, long> Get(string indexFile);
     Dictionary<string, long> GetWithFeedback(string indexFile, Action<string>? feedback = null);

@@ -1,7 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Text;
 using MicroDb;
-using microdb.simpledb;
 
 if (args.Length == 0)
 {
@@ -16,8 +15,8 @@ void RunInteractiveMode()
     Console.WriteLine("Commands: set <key> <value> | get <key> | get-scan <key> | fill [size] [minLen] [maxLen] | bench [size] [minLen] [maxLen] [key] | clear | help | exit");
     Console.WriteLine();
 
-    var indexCache = new DbDbIndex();
-    using var db = new SimpleDb(indexCache);
+    var indexCache = new IndexCache();
+    using var db = new SimpleDatabase(indexCache);
     
     // Load index with feedback
     LoadIndexWithFeedback(indexCache);
@@ -47,8 +46,8 @@ void RunInteractiveMode()
 
 void RunCommandLineMode(string[] args)
 {
-    var indexCache = new DbDbIndex();
-    using var db = new SimpleDb(indexCache);
+    var indexCache = new IndexCache();
+    using var db = new SimpleDatabase(indexCache);
     
     // Load index with feedback
     LoadIndexWithFeedback(indexCache);
@@ -56,35 +55,35 @@ void RunCommandLineMode(string[] args)
     ExecuteCommand(db, args);
 }
 
-void ExecuteCommand(SimpleDb db, string[] args)
+void ExecuteCommand(SimpleDatabase db, string[] args)
 {
-switch (args[0].ToLowerInvariant())
-{
-    case "set":
+    switch (args[0].ToLowerInvariant())
+    {
+        case "set":
             Utils.Require(args.Length >= 3, "set <key> <value>");
-            db.Set(args[1], args[2], immediateFlush: true);;
+            db.Set(args[1], args[2]);
             Console.WriteLine("OK");
-        break;
+            break;
 
-    case "get":
+        case "get":
             Utils.Require(args.Length >= 2, "get <key>");
             var val = db.GetIndexed(args[1]);
             if (val is null) Console.WriteLine("Key not found (index).");
             else Console.WriteLine(val);
-        break;
+            break;
 
-    case "get-scan":
+        case "get-scan":
             Utils.Require(args.Length >= 2, "get-scan <key>");
             var valScan = db.GetScan(args[1]);
             if (valScan is null) Console.WriteLine("Key not found (scan).");
             else Console.WriteLine(valScan);
-        break;
+            break;
 
-    case "fill":
-    {
+        case "fill":
+        {
             long size = args.Length >= 2 ? Utils.ParseSize(args[1]) : (2L << 30);
-        int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
-        int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
+            int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
+            int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
             
             Console.WriteLine("Filling database...");
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -111,7 +110,7 @@ switch (args[0].ToLowerInvariant())
                 string key = $"key{keyNum}";
                 string value = sb.ToString();
                 
-                db.Set(key, value, false);
+                db.Set(key, value);
                 
                 entries++;
                 currentSize += key.Length + value.Length + 16; // Rough estimate
@@ -125,25 +124,22 @@ switch (args[0].ToLowerInvariant())
                 keyNum++;
             }
             
-            // Ensure all data is flushed
-            db.Flush();
-            
             sw.Stop();
             Console.WriteLine($"Filled {entries:N0} entries, lastKey=key{keyNum - 1}, data={Utils.FormatSize(currentSize)} in {sw.Elapsed.TotalSeconds:F2}s");
-        break;
-    }
+            break;
+        }
 
-    case "bench":
-    {
+        case "bench":
+        {
             long size = args.Length >= 2 ? Utils.ParseSize(args[1]) : (2L << 30);
-        int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
-        int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
+            int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
+            int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
 
-        // fresh start
+            // fresh start
             db.Clear();
 
             Console.WriteLine("Filling database for benchmark...");
-        var sw = Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();
             
             var rnd = Random.Shared;
             var sb = new StringBuilder(maxLen);
@@ -161,35 +157,32 @@ switch (args[0].ToLowerInvariant())
                 string key = $"key{keyNum}";
                 string value = sb.ToString();
                 
-                db.Set(key, value, false);
+                db.Set(key, value);
                 
                 entries++;
                 currentSize += key.Length + value.Length + 16; // Rough estimate
                 keyNum++;
             }
             
-            // Ensure all data is flushed before benchmarking
-            db.Flush();
-            
             sw.Stop();
             Console.WriteLine($"fill:     {sw.Elapsed.TotalSeconds:F2}s  ({entries:N0} entries, {Utils.FormatSize(currentSize)})");
 
             string benchKey = args.Length >= 5 ? args[4] : $"key{keyNum - 1}";
 
-        // Warmup (JIT)
+            // Warmup (JIT)
             _ = db.GetIndexed(benchKey);
 
-        sw.Restart();
+            sw.Restart();
             var v1 = db.GetIndexed(benchKey);
-        sw.Stop();
+            sw.Stop();
             Console.WriteLine($"get:      {sw.Elapsed.TotalMilliseconds:F1} ms  -> {Utils.Preview(v1)}");
 
-        sw.Restart();
+            sw.Restart();
             var v2 = db.GetScan(benchKey);
-        sw.Stop();
+            sw.Stop();
             Console.WriteLine($"get-scan: {sw.Elapsed.TotalSeconds:F2} s   -> {Utils.Preview(v2)}");
-        break;
-    }
+            break;
+        }
 
         case "clear":
             db.Clear();
@@ -216,10 +209,10 @@ switch (args[0].ToLowerInvariant())
             Environment.Exit(0);
             break;
 
-    default:
+        default:
             Console.WriteLine($"Unknown command: {args[0]}. Type 'help' for available commands.");
-        break;
-}
+            break;
+    }
 }
 
 string[] ParseCommandLine(string input)
@@ -271,14 +264,14 @@ string[] ParseCommandLine(string input)
     return parts.ToArray();
 }
 
-void LoadIndexWithFeedback(IDbIndex dbIndex)
+void LoadIndexWithFeedback(IIndexCache indexCache)
 {
     if (File.Exists("database.idx"))
     {
         Console.Write("Loading database index");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         
-        dbIndex.GetWithFeedback("database.idx", (message) => {
+        indexCache.GetWithFeedback("database.idx", (message) => {
             Console.Write(".");
         });
         
