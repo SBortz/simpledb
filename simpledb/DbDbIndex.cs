@@ -1,8 +1,9 @@
 using System.Text;
+using MicroDb;
 
-namespace MicroDb;
+namespace microdb.simpledb;
 
-public class IndexCache : IIndexCache
+public class DbDbIndex : IDbIndex
 {
     private Dictionary<string, long>? _dict;
     private long _len;
