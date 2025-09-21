@@ -115,6 +115,20 @@ public class IndexCache : IIndexCache
         _mtime = lastWriteTime;
     }
 
+    public void WriteEntry(string key, long offset)
+    {
+        byte[] keyData = Encoding.UTF8.GetBytes(key);
+        
+        using var fi = new FileStream("database.idx", FileMode.Append, FileAccess.Write, FileShare.Read);
+        using var iw = new BinaryWriter(fi);
+        iw.Write(keyData.Length);
+        iw.Write(keyData);
+        iw.Write(offset);
+        
+        // Update cache
+        AddAndUpdateMetadata(key, offset, "database.idx");
+    }
+
     public void Clear()
     {
         _dict = null;

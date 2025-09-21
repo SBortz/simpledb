@@ -3,21 +3,8 @@ using System.Text;
 
 namespace MicroDb;
 
-public class SimpleDatabase : IDisposable
+public class SimpleDatabase(IIndexCache indexCache, string dataFile = "database.bin")
 {
-    private readonly string dataFile;
-    private readonly string indexFile;
-    private readonly IIndexCache indexCache;
-    private bool disposed;
-
-    public SimpleDatabase(IIndexCache indexCache, string dataFile = "database.bin", string indexFile = "database.idx")
-    {
-        this.indexCache = indexCache;
-        this.dataFile = dataFile;
-        this.indexFile = indexFile;
-    }
-
-
     public void Set(string key, string value)
     {
         byte[] keyData = Encoding.UTF8.GetBytes(key);
@@ -33,17 +20,12 @@ public class SimpleDatabase : IDisposable
         bw.Write(valueData);
         bw.Flush();
 
-        using var fi = new FileStream(indexFile, FileMode.Append, FileAccess.Write, FileShare.Read);
-        using var iw = new BinaryWriter(fi);
-        iw.Write(keyData.Length);
-        iw.Write(keyData);
-        iw.Write(offset);
-        indexCache.AddAndUpdateMetadata(key, offset, indexFile);   // <— Cache aktuell halten
+        indexCache.WriteEntry(key, offset);
     }
 
     public string? GetIndexed(string searchKey)
     {
-        var index = indexCache.Get(indexFile);
+        var index = indexCache.Get("database.idx");
 
         if (!index.TryGetValue(searchKey, out var pos))
             return null;
@@ -77,22 +59,5 @@ public class SimpleDatabase : IDisposable
                 last = Encoding.UTF8.GetString(valueBuf);
         }
         return last;
-    }
-
-
-    public void Clear()
-    {
-        if (File.Exists(dataFile)) File.Delete(dataFile);
-        if (File.Exists(indexFile)) File.Delete(indexFile);
-        indexCache.Clear();
-    }
-
-    public void Dispose()
-    {
-        if (!disposed)
-        {
-            // Cleanup falls nötig
-            disposed = true;
-        }
     }
 }

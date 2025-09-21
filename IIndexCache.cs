@@ -7,5 +7,6 @@ public interface IIndexCache
     void Add(string key, long offset);
     void AddAndUpdateMetadata(string key, long offset, string indexFile);
     void UpdateMetadata(long length, DateTime lastWriteTime);
+    void WriteEntry(string key, long offset);
     void Clear();
 }
