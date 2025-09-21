@@ -5,13 +5,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>microdb</RootNamespace>
+    <RootNamespace>worldssimplestdb</RootNamespace>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\worldssimplestdb.v1\worldssimplestdb.v1\worldssimplestdb.v1.csproj" />
-    <ProjectReference Include="..\worldssimplestdb.v2\worldssimplestdb.v2\worldssimplestdb.v2.csproj" />
-    <ProjectReference Include="..\worldssimplestdb.v3\worldssimplestdb.v3\worldssimplestdb.v3.csproj" />
-  </ItemGroup>
 
 </Project>

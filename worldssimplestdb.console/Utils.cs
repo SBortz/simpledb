@@ -1,4 +1,4 @@
-namespace worldssimplestdb.v3;
+namespace worldssimplestdb;
 
 public static class Utils
 {
