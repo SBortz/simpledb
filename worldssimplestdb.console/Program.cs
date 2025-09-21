@@ -6,7 +6,6 @@ using worldssimplestdb.v2;
 using worldssimplestdb.v3;
 
 await MainAsync(args);
-
 async Task MainAsync(string[] args)
 {
     if (args.Length == 0)
@@ -16,7 +15,6 @@ async Task MainAsync(string[] args)
     }
     await RunCommandLineMode(args);
 }
-
 
 async Task RunInteractiveMode()
 {
@@ -163,18 +161,15 @@ IDatabase CreateV3Database()
 
 void LoadIndexWithFeedback(IIndexStore indexStore)
 {
-    if (File.Exists("database.idx"))
-    {
-        Console.Write("Loading database index");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        indexStore.Load((message) => {
-            Console.Write(".");
-        });
-        
-        sw.Stop();
-        Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
-    }
+    Console.Write("Building database index");
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    
+    indexStore.Load((message) => {
+        Console.Write(".");
+    });
+    
+    sw.Stop();
+    Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
 }
 
 string GetVersionDescription(string version)
@@ -204,9 +199,6 @@ async Task ExecuteCommand(IDatabase database, string[] args)
             if (val is null) Console.WriteLine("Key not found.");
             else Console.WriteLine(val);
             break;
-
-
-
         case "help":
             Console.WriteLine("""
             Available commands:
@@ -216,7 +208,6 @@ async Task ExecuteCommand(IDatabase database, string[] args)
               exit/quit                 - Exit the program
             """);
             break;
-
         case "exit":
         case "quit":
             Console.WriteLine("Goodbye!");
@@ -277,6 +268,3 @@ string[] ParseCommandLine(string input)
 
     return parts.ToArray();
 }
-
-
-

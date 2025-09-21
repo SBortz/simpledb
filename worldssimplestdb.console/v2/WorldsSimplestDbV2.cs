@@ -2,6 +2,12 @@ using System.Text;
 
 namespace worldssimplestdb.v2;
 
+// Data format
+// ┌─────────┬─────────┬─────────┬─────────┐
+// │ keyLen  │ keyData │valueLen │valueData│
+// │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
+// └─────────┴─────────┴─────────┴─────────┘
+
 public class WorldsSimplestDbV2(string dataFile = "database.bin") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
