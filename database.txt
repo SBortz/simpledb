@@ -1,0 +1,2 @@
+﻿testkey;test value v1
+key;;with;;semicolons;value;;with;;semicolons

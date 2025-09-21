@@ -18,7 +18,7 @@ public interface IDatabase : IDisposable
     Task<string?> GetAsync(string key);
 }
 
-public class WorldsSimplestDbV1(string dataFile = "database.bin") : IDatabase
+public class WorldsSimplestDbV1(string dataFile = "database.txt") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
     private bool disposed = false;
@@ -28,18 +28,13 @@ public class WorldsSimplestDbV1(string dataFile = "database.bin") : IDatabase
         await writeSemaphore.WaitAsync();
         try
         {
-            byte[] keyData = Encoding.UTF8.GetBytes(key);
-            byte[] valueData = Encoding.UTF8.GetBytes(value);
-
-            await using var fs = new FileStream(dataFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 4096, useAsync: true);
-            long offset = fs.Position;
-
-            await using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
-            bw.Write(keyData.Length);
-            bw.Write(keyData);
-            bw.Write(valueData.Length);
-            bw.Write(valueData);
-            await fs.FlushAsync();
+            // Escape semicolons in key and value
+            string escapedKey = key.Replace(";", ";;");
+            string escapedValue = value.Replace(";", ";;");
+            
+            // Write in human-readable format: key;value
+            string line = $"{escapedKey};{escapedValue}{Environment.NewLine}";
+            await File.AppendAllTextAsync(dataFile, line, Encoding.UTF8);
         }
         finally
         {
@@ -49,22 +44,60 @@ public class WorldsSimplestDbV1(string dataFile = "database.bin") : IDatabase
 
     public async Task<string?> GetAsync(string searchKey)
     {
-        string? last = null;
-        using var fs = new FileStream(dataFile, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
-        using var br = new BinaryReader(fs);
-
-        while (fs.Position < fs.Length)
-        {
-            int keyLen = br.ReadInt32();
-            var keyBuf = br.ReadBytes(keyLen);
-            int valueLen = br.ReadInt32();
-            var valueBuf = br.ReadBytes(valueLen);
+        if (!File.Exists(dataFile))
+            return null;
             
-            string key = Encoding.UTF8.GetString(keyBuf);
-            if (key == searchKey)
-                last = Encoding.UTF8.GetString(valueBuf);
+        string? last = null;
+        var lines = await File.ReadAllLinesAsync(dataFile, Encoding.UTF8);
+        
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+                
+            var parts = SplitLine(line);
+            if (parts.Length == 2)
+            {
+                string key = parts[0].Replace(";;", ";");
+                string value = parts[1].Replace(";;", ";");
+                
+                if (key == searchKey)
+                    last = value;
+            }
         }
+        
         return last;
+    }
+    
+    private string[] SplitLine(string line)
+    {
+        var parts = new List<string>();
+        var current = new StringBuilder();
+        
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == ';' && i + 1 < line.Length && line[i + 1] == ';')
+            {
+                // Escaped semicolon
+                current.Append(';');
+                i++; // Skip the next semicolon
+            }
+            else if (line[i] == ';')
+            {
+                // Separator
+                parts.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(line[i]);
+            }
+        }
+        
+        if (current.Length > 0)
+            parts.Add(current.ToString());
+            
+        return parts.ToArray();
     }
 
     public void Dispose()
