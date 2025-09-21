@@ -35,19 +35,17 @@ public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "datab
 
     public async Task<string?> GetAsync(string searchKey)
     {
-        var index = indexCache.Get("database.idx");
+        Dictionary<string, long> index = indexCache.Get("database.idx");
 
         if (!index.TryGetValue(searchKey, out var pos))
             return null;
 
-        using var fs = new FileStream(dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
+        await using var fs = new FileStream(dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
         using var br = new BinaryReader(fs);
         fs.Seek(pos, SeekOrigin.Begin);
 
-        int keyLen = br.ReadInt32();
-        var keyBuf = br.ReadBytes(keyLen);
         int valueLen = br.ReadInt32();
-        var valueBuf = br.ReadBytes(valueLen);
+        byte[] valueBuf = br.ReadBytes(valueLen);
         return Encoding.UTF8.GetString(valueBuf);
     }
 
