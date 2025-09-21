@@ -33,7 +33,7 @@ public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "datab
         }
     }
 
-    public async Task<string?> GetIndexedAsync(string searchKey)
+    public async Task<string?> GetAsync(string searchKey)
     {
         var index = indexCache.Get("database.idx");
 
@@ -51,33 +51,6 @@ public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "datab
         return Encoding.UTF8.GetString(valueBuf);
     }
 
-    public async Task<string?> GetScanAsync(string searchKey)
-    {
-        string? last = null;
-        using var fs = new FileStream(dataFile, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
-        using var br = new BinaryReader(fs);
-
-        while (fs.Position < fs.Length)
-        {
-            int keyLen = br.ReadInt32();
-            var keyBuf = br.ReadBytes(keyLen);
-            int valueLen = br.ReadInt32();
-            var valueBuf = br.ReadBytes(valueLen);
-            
-            string key = Encoding.UTF8.GetString(keyBuf);
-            if (key == searchKey)
-                last = Encoding.UTF8.GetString(valueBuf);
-        }
-        return last;
-    }
-
-    public async Task ClearAsync()
-    {
-        if (File.Exists(dataFile)) File.Delete(dataFile);
-        if (File.Exists("database.idx")) File.Delete("database.idx");
-        indexCache.Clear();
-        await Task.CompletedTask; // Make it async
-    }
 
     public void Dispose()
     {
