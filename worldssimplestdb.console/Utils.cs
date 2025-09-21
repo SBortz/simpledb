@@ -1,4 +1,4 @@
-namespace MicroDb;
+namespace worldssimplestdb.v3;
 
 public static class Utils
 {

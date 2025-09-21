@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace MicroDb;
+namespace worldssimplestdb.v3;
 
 public class IndexCache : IIndexCache
 {
@@ -48,7 +48,7 @@ public class IndexCache : IIndexCache
         var fi = new FileInfo(indexFile);
         if (_dict is null || fi.Length != _len || fi.LastWriteTimeUtc != _mtime)
         {
-            feedback?.Invoke($"Loading index from {Utils.FormatSize(fi.Length)} file...");
+            feedback?.Invoke($"Loading index from file...");
             var sw = System.Diagnostics.Stopwatch.StartNew();
             
             // einmal laden

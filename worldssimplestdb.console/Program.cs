@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text;
-using MicroDb;
+using worldssimplestdb.v2;
+using worldssimplestdb.v3;
 
 await MainAsync(args);
 
@@ -21,7 +22,7 @@ async Task RunInteractiveMode()
     Console.WriteLine();
 
     var indexCache = new IndexCache();
-    using var db = new SimpleDatabase(indexCache);
+    using var db = new WorldsSimplestDbV3(indexCache);
     
     // Load index with feedback
     LoadIndexWithFeedback(indexCache);
@@ -52,7 +53,7 @@ async Task RunInteractiveMode()
 async Task RunCommandLineMode(string[] args)
 {
     var indexCache = new IndexCache();
-    using var db = new SimpleDatabase(indexCache);
+    using var db = new WorldsSimplestDbV3(indexCache);
     
     // Load index with feedback
     LoadIndexWithFeedback(indexCache);
@@ -60,7 +61,7 @@ async Task RunCommandLineMode(string[] args)
     await ExecuteCommand(db, args);
 }
 
-async Task ExecuteCommand(SimpleDatabase db, string[] args)
+async Task ExecuteCommand(WorldsSimplestDbV3 db, string[] args)
 {
     switch (args[0].ToLowerInvariant())
     {
@@ -175,15 +176,15 @@ async Task ExecuteCommand(SimpleDatabase db, string[] args)
             string benchKey = args.Length >= 5 ? args[4] : $"key{keyNum - 1}";
 
             // Warmup (JIT)
-            _ = db.GetIndexed(benchKey);
+            _ = await db.GetIndexedAsync(benchKey);
 
             sw.Restart();
-            var v1 = db.GetIndexed(benchKey);
+            string? v1 = await db.GetIndexedAsync(benchKey);
             sw.Stop();
             Console.WriteLine($"get:      {sw.Elapsed.TotalMilliseconds:F1} ms  -> {Utils.Preview(v1)}");
 
             sw.Restart();
-            var v2 = db.GetScan(benchKey);
+            string? v2 = await db.GetIndexedAsync(benchKey);
             sw.Stop();
             Console.WriteLine($"get-scan: {sw.Elapsed.TotalSeconds:F2} s   -> {Utils.Preview(v2)}");
             break;

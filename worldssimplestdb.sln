@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "worldssimplestdb.console", "worldssimplestdb.console\worldssimplestdb.console.csproj", "{7058E97C-AC58-459A-90B0-0797DC31DCDD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "worldssimplestdb.v3", "worldssimplestdb.v3\worldssimplestdb.v3\worldssimplestdb.v3.csproj", "{540B55DD-ED3C-498A-A3BD-A30CDC04AA3B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "worldssimplestdb.v1", "worldssimplestdb.v1\worldssimplestdb.v1\worldssimplestdb.v1.csproj", "{E185DE7A-B6E9-4814-ADC4-FB86B742738A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "worldssimplestdb.v2", "worldssimplestdb.v2\worldssimplestdb.v2\worldssimplestdb.v2.csproj", "{EB8CEC5E-4E78-4271-8D1C-F16172063E22}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7058E97C-AC58-459A-90B0-0797DC31DCDD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7058E97C-AC58-459A-90B0-0797DC31DCDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7058E97C-AC58-459A-90B0-0797DC31DCDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7058E97C-AC58-459A-90B0-0797DC31DCDD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{540B55DD-ED3C-498A-A3BD-A30CDC04AA3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{540B55DD-ED3C-498A-A3BD-A30CDC04AA3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{540B55DD-ED3C-498A-A3BD-A30CDC04AA3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{540B55DD-ED3C-498A-A3BD-A30CDC04AA3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E185DE7A-B6E9-4814-ADC4-FB86B742738A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E185DE7A-B6E9-4814-ADC4-FB86B742738A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E185DE7A-B6E9-4814-ADC4-FB86B742738A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E185DE7A-B6E9-4814-ADC4-FB86B742738A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EB8CEC5E-4E78-4271-8D1C-F16172063E22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB8CEC5E-4E78-4271-8D1C-F16172063E22}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB8CEC5E-4E78-4271-8D1C-F16172063E22}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB8CEC5E-4E78-4271-8D1C-F16172063E22}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
