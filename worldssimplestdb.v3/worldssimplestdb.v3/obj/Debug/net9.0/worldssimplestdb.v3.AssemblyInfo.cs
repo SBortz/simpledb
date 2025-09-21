@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("worldssimplestdb.v3")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d83a843aedfaa16c7b119026bd8ee7b85e8a1018")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c78535fb3c3cb758aa12f15256e54af66662631d")]
 [assembly: System.Reflection.AssemblyProductAttribute("worldssimplestdb.v3")]
 [assembly: System.Reflection.AssemblyTitleAttribute("worldssimplestdb.v3")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
