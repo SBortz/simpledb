@@ -2,14 +2,19 @@
 using System.Text;
 using MicroDb;
 
-if (args.Length == 0)
-{
-    RunInteractiveMode();
-    return;
-}
-RunCommandLineMode(args);
+await MainAsync(args);
 
-void RunInteractiveMode()
+async Task MainAsync(string[] args)
+{
+    if (args.Length == 0)
+    {
+        await RunInteractiveMode();
+        return;
+    }
+    await RunCommandLineMode(args);
+}
+
+async Task RunInteractiveMode()
 {
     Console.WriteLine("=== Simple Database Interactive Mode ===");
     Console.WriteLine("Commands: set <key> <value> | get <key> | get-scan <key> | fill [size] [minLen] [maxLen] | bench [size] [minLen] [maxLen] [key] | clear | help | exit");
@@ -35,7 +40,7 @@ void RunInteractiveMode()
 
         try
         {
-            ExecuteCommand(db, parts);
+                await ExecuteCommand(db, parts);
         }
         catch (Exception ex)
         {
@@ -44,7 +49,7 @@ void RunInteractiveMode()
     }
 }
 
-void RunCommandLineMode(string[] args)
+async Task RunCommandLineMode(string[] args)
 {
     var indexCache = new IndexCache();
     using var db = new SimpleDatabase(indexCache);
@@ -52,32 +57,32 @@ void RunCommandLineMode(string[] args)
     // Load index with feedback
     LoadIndexWithFeedback(indexCache);
     
-    ExecuteCommand(db, args);
+    await ExecuteCommand(db, args);
 }
 
-void ExecuteCommand(SimpleDatabase db, string[] args)
+async Task ExecuteCommand(SimpleDatabase db, string[] args)
 {
     switch (args[0].ToLowerInvariant())
     {
-        case "set":
+    case "set":
             Utils.Require(args.Length >= 3, "set <key> <value>");
-            db.Set(args[1], args[2]);
+            await db.SetAsync(args[1], args[2]);
             Console.WriteLine("OK");
-            break;
+        break;
 
         case "get":
             Utils.Require(args.Length >= 2, "get <key>");
-            var val = db.GetIndexed(args[1]);
+            var val = await db.GetIndexedAsync(args[1]);
             if (val is null) Console.WriteLine("Key not found (index).");
             else Console.WriteLine(val);
-            break;
+        break;
 
         case "get-scan":
             Utils.Require(args.Length >= 2, "get-scan <key>");
-            var valScan = db.GetScan(args[1]);
+            var valScan = await db.GetScanAsync(args[1]);
             if (valScan is null) Console.WriteLine("Key not found (scan).");
             else Console.WriteLine(valScan);
-            break;
+        break;
 
         case "fill":
         {
@@ -110,7 +115,7 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
                 string key = $"key{keyNum}";
                 string value = sb.ToString();
                 
-                db.Set(key, value);
+                await db.SetAsync(key, value);
                 
                 entries++;
                 currentSize += key.Length + value.Length + 16; // Rough estimate
@@ -136,7 +141,7 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
             int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
 
             // fresh start
-            db.Clear();
+            await db.ClearAsync();
 
             Console.WriteLine("Filling database for benchmark...");
             var sw = Stopwatch.StartNew();
@@ -157,7 +162,7 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
                 string key = $"key{keyNum}";
                 string value = sb.ToString();
                 
-                db.Set(key, value);
+                await db.SetAsync(key, value);
                 
                 entries++;
                 currentSize += key.Length + value.Length + 16; // Rough estimate
@@ -185,7 +190,7 @@ void ExecuteCommand(SimpleDatabase db, string[] args)
         }
 
         case "clear":
-            db.Clear();
+            await db.ClearAsync();
             Console.WriteLine("Database cleared.");
             break;
 
