@@ -80,6 +80,13 @@ public class IndexCache : IIndexCache
         return _dict!;
     }
 
+    public bool TryGetValue(string key, string indexFile, out long offset)
+    {
+        // Ensure cache is loaded
+        Get(indexFile);
+        return _dict!.TryGetValue(key, out offset);
+    }
+
     public void Add(string key, long offset)
     {
         if (_dict != null)
