@@ -155,9 +155,9 @@ IDatabase? CreateDatabase(string version)
 
 IDatabase CreateV3Database()
 {
-    var indexCache = new IndexStore();
-    var db = new WorldsSimplestDbV3(indexCache);
-    LoadIndexWithFeedback(indexCache);
+    var indexStore = new IndexStore();
+    var db = new WorldsSimplestDbV3(indexStore);
+    LoadIndexWithFeedback(indexStore);
     return db;
 }
 
