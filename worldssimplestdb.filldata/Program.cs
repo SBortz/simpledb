@@ -70,7 +70,9 @@ async Task FillV1(long targetSize, int minLen, int maxLen, Func<long> getWritten
 {
     var random = new Random(42);
     
-    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.txt"));
+    // Always create database in the solution directory
+    string solutionDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
+    string dbPath = Path.Combine(solutionDir, "database.txt");
     await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new StreamWriter(fs);
     
@@ -94,7 +96,9 @@ async Task FillV2(long targetSize, int minLen, int maxLen, Func<long> getWritten
 {
     var random = new Random(42);
     
-    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.bin"));
+    // Always create database in the solution directory
+    string solutionDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
+    string dbPath = Path.Combine(solutionDir, "database.bin");
     await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new BinaryWriter(fs);
     
@@ -126,7 +130,9 @@ async Task FillV3(long targetSize, int minLen, int maxLen, Func<long> getWritten
     var random = new Random(42);
     var indexDict = new Dictionary<string, long>();
     
-    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.bin"));
+    // Always create database in the solution directory
+    string solutionDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
+    string dbPath = Path.Combine(solutionDir, "database.bin");
     await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new BinaryWriter(fs);
     

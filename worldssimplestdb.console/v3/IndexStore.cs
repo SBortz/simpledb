@@ -2,13 +2,28 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-public class IndexStore(string dataFile = "../../database.bin") : IIndexStore
+public class IndexStore(string? dataFile = null) : IIndexStore
 {
+    private readonly string _dataFile = dataFile ?? GetSolutionDatabasePath("database.bin");
     private Dictionary<string, long> indexDict = new();
+    
+    private static string GetSolutionDatabasePath(string fileName)
+    {
+        // Find the solution directory by looking for .sln file
+        var currentDir = Directory.GetCurrentDirectory();
+        var dir = new DirectoryInfo(currentDir);
+        
+        while (dir != null && !dir.GetFiles("*.sln").Any())
+        {
+            dir = dir.Parent;
+        }
+        
+        return dir != null ? Path.Combine(dir.FullName, fileName) : fileName;
+    }
 
     public void Load(Action<string>? feedback = null)
     {
-        if (!File.Exists(dataFile)) 
+        if (!File.Exists(_dataFile)) 
         {
             feedback?.Invoke("No database file found, starting with empty index");
             return;
@@ -19,7 +34,7 @@ public class IndexStore(string dataFile = "../../database.bin") : IIndexStore
         
         indexDict.Clear();
         
-        using var fs = new FileStream(dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 1 << 20);
+        using var fs = new FileStream(_dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 1 << 20);
         using var br = new BinaryReader(fs);
         
         long entries = 0;
