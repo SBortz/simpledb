@@ -113,7 +113,7 @@ async Task RunInteractiveWithDatabase(string version)
         return;
     }
     
-    Console.WriteLine("Commands: set <key> <value> | get <key> | fill [size] [minLen] [maxLen] | help | exit");
+    Console.WriteLine("Commands: set <key> <value> | get <key> | help | exit");
     Console.WriteLine();
 
     using (db)
@@ -205,55 +205,6 @@ async Task ExecuteCommand(IDatabase database, string[] args)
             else Console.WriteLine(val);
             break;
 
-        case "fill":
-        {
-            long size = args.Length >= 2 ? Utils.ParseSize(args[1]) : (2L << 30);
-            int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
-            int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
-            
-            Console.WriteLine("Filling database...");
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            
-            var rnd = Random.Shared;
-            var sb = new StringBuilder(maxLen);
-            int keyNum = 1;
-            long entries = 0;
-            long currentSize = 0;
-            
-            // Get current database size
-            if (File.Exists("database.bin"))
-            {
-                currentSize = new FileInfo("database.bin").Length;
-            }
-            
-            while (currentSize < size)
-            {
-                int len = rnd.Next(minLen, maxLen + 1);
-                sb.Clear();
-                sb.Append('v').Append(keyNum).Append('-');
-                while (sb.Length < len) sb.Append('x');
-                
-                string key = $"key{keyNum}";
-                string value = sb.ToString();
-                
-                await database.SetAsync(key, value);
-                
-                entries++;
-                currentSize += key.Length + value.Length + 16; // Rough estimate
-                
-                // Progress feedback every 10000 entries
-                if (entries % 10000 == 0)
-                {
-                    Console.WriteLine($"Filled {entries:N0} entries, current size: {Utils.FormatSize(currentSize)}");
-                }
-                
-                keyNum++;
-            }
-            
-            sw.Stop();
-            Console.WriteLine($"Filled {entries:N0} entries, lastKey=key{keyNum - 1}, data={Utils.FormatSize(currentSize)} in {sw.Elapsed.TotalSeconds:F2}s");
-            break;
-        }
 
 
         case "help":
@@ -261,7 +212,6 @@ async Task ExecuteCommand(IDatabase database, string[] args)
             Available commands:
               set <key> <value>         - Store a key-value pair
               get <key>                 - Get value by key
-              fill [size] [minLen] [maxLen] - Fill database with test data
               help                      - Show this help
               exit/quit                 - Exit the program
             """);

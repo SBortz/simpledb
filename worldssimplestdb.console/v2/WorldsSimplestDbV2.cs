@@ -16,7 +16,6 @@ public class WorldsSimplestDbV2(string dataFile = "database.bin") : IDatabase
             byte[] valueData = Encoding.UTF8.GetBytes(value);
 
             await using var fs = new FileStream(dataFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 4096, useAsync: true);
-            long offset = fs.Position;
 
             await using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
             bw.Write(keyData.Length);
@@ -34,7 +33,7 @@ public class WorldsSimplestDbV2(string dataFile = "database.bin") : IDatabase
     public async Task<string?> GetAsync(string searchKey)
     {
         string? last = null;
-        using var fs = new FileStream(dataFile, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
+        await using var fs = new FileStream(dataFile, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
         using var br = new BinaryReader(fs);
 
         while (fs.Position < fs.Length)
