@@ -2,7 +2,7 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-public class IndexStore(string dataFile = "database.bin") : IIndexStore
+public class IndexStore(string dataFile = "../../database.bin") : IIndexStore
 {
     private Dictionary<string, long> indexDict = new();
 

@@ -2,7 +2,7 @@ using System.Text;
 
 namespace worldssimplestdb.v1;
 
-public class WorldsSimplestDbV1(string dataFile = "database.txt") : IDatabase
+public class WorldsSimplestDbV1(string dataFile = "../../database.txt") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
     private bool disposed;

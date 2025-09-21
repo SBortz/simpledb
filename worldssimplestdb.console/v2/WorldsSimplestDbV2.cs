@@ -8,7 +8,7 @@ namespace worldssimplestdb.v2;
 // │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
 // └─────────┴─────────┴─────────┴─────────┘
 
-public class WorldsSimplestDbV2(string dataFile = "database.bin") : IDatabase
+public class WorldsSimplestDbV2(string dataFile = "../../database.bin") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
     private bool disposed = false;

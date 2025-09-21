@@ -70,7 +70,8 @@ async Task FillV1(long targetSize, int minLen, int maxLen, Func<long> getWritten
 {
     var random = new Random(42);
     
-    await using var fs = new FileStream("database.txt", FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
+    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.txt"));
+    await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new StreamWriter(fs);
     
     while (getWrittenBytes() < targetSize)
@@ -93,7 +94,8 @@ async Task FillV2(long targetSize, int minLen, int maxLen, Func<long> getWritten
 {
     var random = new Random(42);
     
-    await using var fs = new FileStream("database.bin", FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
+    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.bin"));
+    await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new BinaryWriter(fs);
     
     while (getWrittenBytes() < targetSize)
@@ -124,7 +126,8 @@ async Task FillV3(long targetSize, int minLen, int maxLen, Func<long> getWritten
     var random = new Random(42);
     var indexDict = new Dictionary<string, long>();
     
-    await using var fs = new FileStream("database.bin", FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
+    string dbPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "database.bin"));
+    await using var fs = new FileStream(dbPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
     await using var writer = new BinaryWriter(fs);
     
     while (getWrittenBytes() < targetSize)
