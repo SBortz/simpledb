@@ -53,7 +53,6 @@ public class WorldsSimplestDbV3(IIndexStore indexStore, string dataFile = "datab
         return Encoding.UTF8.GetString(valueBuf);
     }
 
-
     public void Dispose()
     {
         if (disposed) return;

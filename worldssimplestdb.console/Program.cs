@@ -168,7 +168,7 @@ void LoadIndexWithFeedback(IIndexStore indexStore)
         Console.Write("Loading database index");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         
-        indexStore.GetWithFeedback((message) => {
+        indexStore.Load((message) => {
             Console.Write(".");
         });
         
