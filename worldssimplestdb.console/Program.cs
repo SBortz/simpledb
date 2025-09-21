@@ -1,7 +1,9 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using worldssimplestdb.dbv1;
 using worldssimplestdb.v2;
 using worldssimplestdb.v3;
+using worldssimplestdb.console;
 
 await MainAsync(args);
 
@@ -15,17 +17,18 @@ async Task MainAsync(string[] args)
     await RunCommandLineMode(args);
 }
 
+
 async Task RunInteractiveMode()
 {
     Console.WriteLine("=== Simple Database Interactive Mode ===");
-    Console.WriteLine("Commands: set <key> <value> | get <key> | get-scan <key> | fill [size] [minLen] [maxLen] | bench [size] [minLen] [maxLen] [key] | clear | help | exit");
     Console.WriteLine();
-
-    var indexCache = new IndexCache();
-    using var db = new WorldsSimplestDbV3(indexCache);
     
-    // Load index with feedback
-    LoadIndexWithFeedback(indexCache);
+    // Database version selection
+    var db = await SelectDatabaseVersion();
+    if (db == null) return;
+    
+    Console.WriteLine("Commands: set <key> <value> | get <key> | get-scan <key> | fill [size] [minLen] [maxLen] | help | exit");
+    Console.WriteLine();
 
     while (true)
     {
@@ -52,16 +55,89 @@ async Task RunInteractiveMode()
 
 async Task RunCommandLineMode(string[] args)
 {
-    var indexCache = new IndexCache();
-    using var db = new WorldsSimplestDbV3(indexCache);
+    // Check for version parameter
+    DatabaseBase? db = null;
+    if (args.Length > 0 && (args[0] == "--version" || args[0] == "-v"))
+    {
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: --version <v1|v2|v3>");
+            return;
+        }
+        db = CreateDatabase(args[1]);
+        if (db == null)
+        {
+            Console.WriteLine("Invalid version. Use v1, v2, or v3.");
+            return;
+        }
+        args = args.Skip(2).ToArray(); // Remove version arguments
+    }
+    else
+    {
+        // Default to V3 for command line mode
+        db = new DatabaseV3();
+    }
     
-    // Load index with feedback
-    LoadIndexWithFeedback(indexCache);
+    if (args.Length == 0)
+    {
+        Console.WriteLine("No command provided.");
+        return;
+    }
     
-    await ExecuteCommand(db, args);
+    using (db)
+    {
+        await ExecuteCommand(db, args);
+    }
 }
 
-async Task ExecuteCommand(WorldsSimplestDbV3 db, string[] args)
+async Task<DatabaseBase?> SelectDatabaseVersion()
+{
+    Console.WriteLine("Select Database Version:");
+    Console.WriteLine("1. V1 - Basic append-only database (no index)");
+    Console.WriteLine("2. V2 - Basic append-only database (no index) [same as V1]");
+    Console.WriteLine("3. V3 - Advanced database with index cache for fast lookups");
+    Console.WriteLine();
+    
+    while (true)
+    {
+        Console.Write("Choose version (1-3) or 'exit': ");
+        var input = Console.ReadLine()?.Trim();
+        
+        if (string.IsNullOrEmpty(input)) continue;
+        
+        switch (input.ToLowerInvariant())
+        {
+            case "1":
+                Console.WriteLine("Using Database V1 (Basic append-only)");
+                return new DatabaseV1();
+            case "2":
+                Console.WriteLine("Using Database V2 (Basic append-only)");
+                return new DatabaseV2();
+            case "3":
+                Console.WriteLine("Using Database V3 (With index cache)");
+                return new DatabaseV3();
+            case "exit":
+            case "quit":
+                return null;
+            default:
+                Console.WriteLine("Invalid choice. Please enter 1, 2, 3, or 'exit'.");
+                break;
+        }
+    }
+}
+
+DatabaseBase? CreateDatabase(string version)
+{
+    return version.ToLowerInvariant() switch
+    {
+        "v1" or "1" => new DatabaseV1(),
+        "v2" or "2" => new DatabaseV2(),
+        "v3" or "3" => new DatabaseV3(),
+        _ => null
+    };
+}
+
+async Task ExecuteCommand(DatabaseBase db, string[] args)
 {
     switch (args[0].ToLowerInvariant())
     {
@@ -135,65 +211,6 @@ async Task ExecuteCommand(WorldsSimplestDbV3 db, string[] args)
             break;
         }
 
-        case "bench":
-        {
-            long size = args.Length >= 2 ? Utils.ParseSize(args[1]) : (2L << 30);
-            int minLen = args.Length >= 3 ? int.Parse(args[2]) : 16;
-            int maxLen = args.Length >= 4 ? int.Parse(args[3]) : 64;
-
-            // fresh start
-            await db.ClearAsync();
-
-            Console.WriteLine("Filling database for benchmark...");
-            var sw = Stopwatch.StartNew();
-            
-            var rnd = Random.Shared;
-            var sb = new StringBuilder(maxLen);
-            int keyNum = 1;
-            long entries = 0;
-            long currentSize = 0;
-            
-            while (currentSize < size)
-            {
-                int len = rnd.Next(minLen, maxLen + 1);
-                sb.Clear();
-                sb.Append('v').Append(keyNum).Append('-');
-                while (sb.Length < len) sb.Append('x');
-                
-                string key = $"key{keyNum}";
-                string value = sb.ToString();
-                
-                await db.SetAsync(key, value);
-                
-                entries++;
-                currentSize += key.Length + value.Length + 16; // Rough estimate
-                keyNum++;
-            }
-            
-            sw.Stop();
-            Console.WriteLine($"fill:     {sw.Elapsed.TotalSeconds:F2}s  ({entries:N0} entries, {Utils.FormatSize(currentSize)})");
-
-            string benchKey = args.Length >= 5 ? args[4] : $"key{keyNum - 1}";
-
-            // Warmup (JIT)
-            _ = await db.GetIndexedAsync(benchKey);
-
-            sw.Restart();
-            string? v1 = await db.GetIndexedAsync(benchKey);
-            sw.Stop();
-            Console.WriteLine($"get:      {sw.Elapsed.TotalMilliseconds:F1} ms  -> {Utils.Preview(v1)}");
-
-            sw.Restart();
-            string? v2 = await db.GetIndexedAsync(benchKey);
-            sw.Stop();
-            Console.WriteLine($"get-scan: {sw.Elapsed.TotalSeconds:F2} s   -> {Utils.Preview(v2)}");
-            break;
-        }
-
-        case "clear":
-            await db.ClearAsync();
-            Console.WriteLine("Database cleared.");
-            break;
 
         case "help":
             Console.WriteLine("""
@@ -202,8 +219,6 @@ async Task ExecuteCommand(WorldsSimplestDbV3 db, string[] args)
               get <key>                 - Get value by key (indexed)
               get-scan <key>            - Get value by key (scan)
               fill [size] [minLen] [maxLen] - Fill database with test data
-              bench [size] [minLen] [maxLen] [key] - Benchmark database
-              clear                     - Clear the database
               help                      - Show this help
               exit/quit                 - Exit the program
             """);
@@ -270,19 +285,4 @@ string[] ParseCommandLine(string input)
     return parts.ToArray();
 }
 
-void LoadIndexWithFeedback(IIndexCache indexCache)
-{
-    if (File.Exists("database.idx"))
-    {
-        Console.Write("Loading database index");
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        
-        indexCache.GetWithFeedback("database.idx", (message) => {
-            Console.Write(".");
-        });
-        
-        sw.Stop();
-        Console.WriteLine($" done ({sw.ElapsedMilliseconds}ms)");
-    }
-}
 
