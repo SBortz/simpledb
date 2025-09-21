@@ -2,7 +2,7 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "database.bin") : IDatabase
+public class WorldsSimplestDbV3(IIndexStore indexStore, string dataFile = "database.bin") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
     private bool disposed = false;
@@ -25,7 +25,7 @@ public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "datab
             bw.Write(valueData);
             await fs.FlushAsync();
 
-            indexCache.WriteEntry(key, offset);
+            indexStore.WriteEntry(key, offset);
         }
         finally
         {
@@ -35,7 +35,7 @@ public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "datab
 
     public async Task<string?> GetAsync(string searchKey)
     {
-        if (!indexCache.TryGetValue(searchKey, "database.idx", out long pos))
+        if (!indexStore.TryGetValue(searchKey, out long pos))
             return null;
 
         await using var fs = new FileStream(dataFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);

@@ -155,20 +155,20 @@ IDatabase? CreateDatabase(string version)
 
 IDatabase CreateV3Database()
 {
-    var indexCache = new IndexCache();
+    var indexCache = new IndexStore();
     var db = new WorldsSimplestDbV3(indexCache);
     LoadIndexWithFeedback(indexCache);
     return db;
 }
 
-void LoadIndexWithFeedback(IIndexCache indexCache)
+void LoadIndexWithFeedback(IIndexStore indexStore)
 {
     if (File.Exists("database.idx"))
     {
         Console.Write("Loading database index");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         
-        indexCache.GetWithFeedback("database.idx", (message) => {
+        indexStore.GetWithFeedback((message) => {
             Console.Write(".");
         });
         

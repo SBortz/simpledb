@@ -2,21 +2,21 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-public class IndexCache : IIndexCache
+public class IndexStore(string indexFile = "database.idx") : IIndexStore
 {
-    private Dictionary<string, long>? _dict;
-    private long _len;
+    private Dictionary<string, long>? dict;
+    private long len;
     private DateTime _mtime;
 
-    public Dictionary<string, long> Get(string indexFile)
+    public Dictionary<string, long> Get()
     {
-        if (!File.Exists(indexFile)) return _dict ??= new();
+        if (!File.Exists(indexFile)) return dict ??= new();
         
         // If we already have a loaded cache, return it immediately
         // This prevents reloading when we know the cache is up-to-date
-        if (_dict != null)
+        if (dict != null)
         {
-            return _dict;
+            return dict;
         }
         
         // Only reload if cache is null (first time)
@@ -38,15 +38,15 @@ public class IndexCache : IIndexCache
             string key = Encoding.UTF8.GetString(keyBuf);
             dict[key] = off;
         }
-        _dict = dict; _len = fi.Length; _mtime = fi.LastWriteTimeUtc;
-        return _dict;
+        this.dict = dict; len = fi.Length; _mtime = fi.LastWriteTimeUtc;
+        return this.dict;
     }
 
-    public Dictionary<string, long> GetWithFeedback(string indexFile, Action<string>? feedback = null)
+    public Dictionary<string, long> GetWithFeedback(Action<string>? feedback = null)
     {
-        if (!File.Exists(indexFile)) return _dict ??= new();
+        if (!File.Exists(indexFile)) return dict ??= new();
         var fi = new FileInfo(indexFile);
-        if (_dict is null || fi.Length != _len || fi.LastWriteTimeUtc != _mtime)
+        if (dict is null || fi.Length != len || fi.LastWriteTimeUtc != _mtime)
         {
             feedback?.Invoke($"Loading index from file...");
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -74,51 +74,51 @@ public class IndexCache : IIndexCache
             }
             
             sw.Stop();
-            _dict = dict; _len = fi.Length; _mtime = fi.LastWriteTimeUtc;
+            this.dict = dict; len = fi.Length; _mtime = fi.LastWriteTimeUtc;
             feedback?.Invoke($"Index loaded: {entries:N0} entries in {sw.ElapsedMilliseconds}ms");
         }
-        return _dict!;
+        return dict!;
     }
 
-    public bool TryGetValue(string key, string indexFile, out long offset)
+    public bool TryGetValue(string key, out long offset)
     {
         // Ensure cache is loaded
-        Get(indexFile);
-        return _dict!.TryGetValue(key, out offset);
+        Get();
+        return dict!.TryGetValue(key, out offset);
     }
 
     public void Add(string key, long offset)
     {
-        if (_dict != null)
+        if (dict != null)
         {
-            _dict.Remove(key);
-            _dict.Add(key, offset);
+            dict.Remove(key);
+            dict.Add(key, offset);
         }
     }
 
-    public void AddAndUpdateMetadata(string key, long offset, string indexFile)
+    public void AddAndUpdateMetadata(string key, long offset)
     {
         // Ensure dict is initialized
-        if (_dict == null)
+        if (dict == null)
         {
-            _dict = new Dictionary<string, long>();
+            dict = new Dictionary<string, long>();
         }
         
-        _dict.Remove(key);
-        _dict.Add(key, offset);
+        dict.Remove(key);
+        dict.Add(key, offset);
         
         // Update metadata to prevent full reload
         var fi = new FileInfo(indexFile);
         if (fi.Exists)
         {
-            _len = fi.Length;
+            len = fi.Length;
             _mtime = fi.LastWriteTimeUtc;
         }
     }
 
     public void UpdateMetadata(long length, DateTime lastWriteTime)
     {
-        _len = length;
+        len = length;
         _mtime = lastWriteTime;
     }
 
@@ -126,20 +126,20 @@ public class IndexCache : IIndexCache
     {
         byte[] keyData = Encoding.UTF8.GetBytes(key);
         
-        using var fi = new FileStream("database.idx", FileMode.Append, FileAccess.Write, FileShare.Read);
+        using var fi = new FileStream(indexFile, FileMode.Append, FileAccess.Write, FileShare.Read);
         using var iw = new BinaryWriter(fi);
         iw.Write(keyData.Length);
         iw.Write(keyData);
         iw.Write(offset);
         
         // Update cache
-        AddAndUpdateMetadata(key, offset, "database.idx");
+        AddAndUpdateMetadata(key, offset);
     }
 
     public void Clear()
     {
-        _dict = null;
-        _len = 0;
+        dict = null;
+        len = 0;
         _mtime = default;
     }
 }
