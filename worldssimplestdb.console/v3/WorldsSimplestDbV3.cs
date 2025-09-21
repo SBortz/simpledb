@@ -2,7 +2,7 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "database.bin") : IDisposable
+public class WorldsSimplestDbV3(IIndexCache indexCache, string dataFile = "database.bin") : IDatabase
 {
     private readonly SemaphoreSlim writeSemaphore = new(1, 1);
     private bool disposed = false;

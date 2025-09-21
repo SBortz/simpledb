@@ -98,13 +98,9 @@ async Task RunWithDatabase(string version, string[] args)
         return;
     }
     
-    try
+    using (db)
     {
         await ExecuteCommand(db, args);
-    }
-    finally
-    {
-        if (db is IDisposable disposable) disposable.Dispose();
     }
 }
 
@@ -120,7 +116,7 @@ async Task RunInteractiveWithDatabase(string version)
     Console.WriteLine("Commands: set <key> <value> | get <key> | fill [size] [minLen] [maxLen] | help | exit");
     Console.WriteLine();
 
-    try
+    using (db)
     {
         while (true)
         {
@@ -144,13 +140,9 @@ async Task RunInteractiveWithDatabase(string version)
             }
         }
     }
-    finally
-    {
-        if (db is IDisposable disposable) disposable.Dispose();
-    }
 }
 
-object? CreateDatabase(string version)
+IDatabase? CreateDatabase(string version)
 {
     return version.ToLowerInvariant() switch
     {
@@ -161,7 +153,7 @@ object? CreateDatabase(string version)
     };
 }
 
-object CreateV3Database()
+IDatabase CreateV3Database()
 {
     var indexCache = new IndexCache();
     var db = new WorldsSimplestDbV3(indexCache);
@@ -196,19 +188,19 @@ string GetVersionDescription(string version)
     };
 }
 
-async Task ExecuteCommand(object database, string[] args)
+async Task ExecuteCommand(IDatabase database, string[] args)
 {
     switch (args[0].ToLowerInvariant())
     {
         case "set":
             Utils.Require(args.Length >= 3, "set <key> <value>");
-            await ((dynamic)database).SetAsync(args[1], args[2]);
+            await database.SetAsync(args[1], args[2]);
             Console.WriteLine("OK");
             break;
 
         case "get":
             Utils.Require(args.Length >= 2, "get <key>");
-            var val = await ((dynamic)database).GetAsync(args[1]);
+            var val = await database.GetAsync(args[1]);
             if (val is null) Console.WriteLine("Key not found.");
             else Console.WriteLine(val);
             break;
@@ -244,7 +236,7 @@ async Task ExecuteCommand(object database, string[] args)
                 string key = $"key{keyNum}";
                 string value = sb.ToString();
                 
-                await ((dynamic)database).SetAsync(key, value);
+                await database.SetAsync(key, value);
                 
                 entries++;
                 currentSize += key.Length + value.Length + 16; // Rough estimate
