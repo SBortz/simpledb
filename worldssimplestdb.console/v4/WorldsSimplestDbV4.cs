@@ -84,14 +84,24 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
             _wal.Open();
         }
         
-        // Recovery: WAL replayen (falls vorhanden)
-        if (enableWAL)
-        {
-            RecoverFromWALAsync().GetAwaiter().GetResult();
-        }
-        
-        // Lade existierende SSTables
+        // Lade existierende SSTables (synchron)
         LoadExistingSSTables();
+    }
+    
+    /// <summary>
+    /// Initialisiert die Datenbank asynchron (WAL-Recovery, etc.)
+    /// Muss nach dem Konstruktor aufgerufen werden, bevor die Datenbank verwendet wird.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        // Recovery: WAL replayen (falls vorhanden)
+        await RecoverFromWALAsync();
+        
+        // Stelle sicher, dass WAL nach Recovery geöffnet ist (für neue Writes)
+        if (_wal != null && !_disposed)
+        {
+            _wal.Open();
+        }
     }
     
     private static string GetSolutionDatabasePath(string directoryName)

@@ -180,6 +180,9 @@ async Task FillV4(long targetSize, int minLen, int maxLen, Func<long> getWritten
         memtableFlushSize: 10000
     );
     
+    // Initialisiere asynchron (WAL-Recovery, etc.)
+    await db.InitializeAsync();
+    
     while (getWrittenBytes() < targetSize)
     {
         string key = $"key_{getEntryCount():D8}";

@@ -53,57 +53,77 @@ public class SSTableWriter
         try
         {
             // Schreibe zuerst in Temp-Datei (für Atomizität)
-            await using var fs = new FileStream(tempFilename, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 64 * 1024);
-            await using var bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
-            
-            var entries = memtable.GetSortedEntries().ToList();
-            
-            // 1. Schreibe Header (Platzhalter, wird später aktualisiert)
-            long headerPos = fs.Position;
-            bw.Write(SSTableFormat.MagicNumber);
-            bw.Write(SSTableFormat.Version);
-            bw.Write(entries.Count);
-            bw.Write(0L); // IndexOffset Platzhalter
-            
-            // 2. Schreibe sortierte Data Section und sammle Index-Einträge
-            var indexEntries = new List<(string key, long offset)>();
-            
-            foreach (var entry in entries)
+            FileStream? fs = null;
+            BinaryWriter? bw = null;
+            try
             {
-                long offset = fs.Position;
-                indexEntries.Add((entry.Key, offset));
+                fs = new FileStream(tempFilename, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 64 * 1024);
+                bw = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
                 
-                byte[] keyBytes = Encoding.UTF8.GetBytes(entry.Key);
-                byte[] valueBytes = Encoding.UTF8.GetBytes(entry.Value);
+                var entries = memtable.GetSortedEntries().ToList();
                 
-                bw.Write(keyBytes.Length);
-                bw.Write(keyBytes);
-                bw.Write(valueBytes.Length);
-                bw.Write(valueBytes);
+                // 1. Schreibe Header (Platzhalter, wird später aktualisiert)
+                long headerPos = fs.Position;
+                bw.Write(SSTableFormat.MagicNumber);
+                bw.Write(SSTableFormat.Version);
+                bw.Write(entries.Count);
+                bw.Write(0L); // IndexOffset Platzhalter
+                
+                // 2. Schreibe sortierte Data Section und sammle Index-Einträge
+                var indexEntries = new List<(string key, long offset)>();
+                
+                foreach (var entry in entries)
+                {
+                    long offset = fs.Position;
+                    indexEntries.Add((entry.Key, offset));
+                    
+                    byte[] keyBytes = Encoding.UTF8.GetBytes(entry.Key);
+                    byte[] valueBytes = Encoding.UTF8.GetBytes(entry.Value);
+                    
+                    bw.Write(keyBytes.Length);
+                    bw.Write(keyBytes);
+                    bw.Write(valueBytes.Length);
+                    bw.Write(valueBytes);
+                }
+                
+                // 3. Schreibe Index Section
+                long indexOffset = fs.Position;
+                
+                foreach (var (key, offset) in indexEntries)
+                {
+                    byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+                    bw.Write(keyBytes.Length);
+                    bw.Write(keyBytes);
+                    bw.Write(offset);
+                }
+            
+                // 4. Aktualisiere Header mit korrektem IndexOffset
+                fs.Seek(headerPos + 12, SeekOrigin.Begin); // Position von IndexOffset im Header
+                bw.Write(indexOffset);
+                
+                // WICHTIG: Flush alles auf Disk bevor Dispose (für Crash-Safety)
+                // Flush BinaryWriter zuerst (schreibt gepufferte Daten in FileStream)
+                bw.Flush();
+                
+                // Dispose BinaryWriter (mit leaveOpen: true bleibt fs offen)
+                bw.Dispose();
+                bw = null;
+                
+                // Dann Flush FileStream (schreibt auf Disk)
+                await fs.FlushAsync();
+                
+                // Dispose FileStream (schließt die Datei)
+                await fs.DisposeAsync();
+                fs = null;
+            }
+            finally
+            {
+                // Cleanup falls etwas schief geht
+                bw?.Dispose();
+                fs?.Dispose();
             }
             
-            // 3. Schreibe Index Section
-            long indexOffset = fs.Position;
-            
-            foreach (var (key, offset) in indexEntries)
-            {
-                byte[] keyBytes = Encoding.UTF8.GetBytes(key);
-                bw.Write(keyBytes.Length);
-                bw.Write(keyBytes);
-                bw.Write(offset);
-            }
-        
-            // 4. Aktualisiere Header mit korrektem IndexOffset
-            fs.Seek(headerPos + 12, SeekOrigin.Begin); // Position von IndexOffset im Header
-            bw.Write(indexOffset);
-            
-            // WICHTIG: Flush alles auf Disk bevor Rename (für Crash-Safety)
-            await fs.FlushAsync();
-            
-            // Schließe Datei explizit (garantiert dass alles auf Disk ist)
-            bw.Close();
-            fs.Close();
-            
+            // Datei ist jetzt geschlossen und alles ist auf Disk
             // Atomarer Rename: Temp → Final (auf meisten Filesystemen atomic)
             // Falls Crash während Rename: Temp-Datei bleibt, kann gelöscht werden
             File.Move(tempFilename, finalFilename, overwrite: false);

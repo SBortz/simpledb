@@ -4,6 +4,7 @@ using worldssimplestdb;
 using worldssimplestdb.v1;
 using worldssimplestdb.v2;
 using worldssimplestdb.v3;
+using worldssimplestdb.v4;
 
 await MainAsync(args);
 async Task MainAsync(string[] args)
@@ -33,7 +34,7 @@ async Task RunCommandLineMode(string[] args)
     {
         if (args.Length < 2)
         {
-            Console.WriteLine("Usage: --version <v1|v2|v3>");
+            Console.WriteLine("Usage: --version <v1|v2|v3|v4>");
             return;
         }
         
@@ -56,11 +57,12 @@ async Task SelectAndRunDatabaseVersion()
     Console.WriteLine("1. V1 - Basic append-only database (no index)");
     Console.WriteLine("2. V2 - Basic append-only database (no index) [same as V1]");
     Console.WriteLine("3. V3 - Advanced database with index cache for fast lookups");
+    Console.WriteLine("4. V4 - SSTable-based database with WAL and crash recovery");
     Console.WriteLine();
     
     while (true)
     {
-        Console.Write("Choose version (1-3) or 'exit': ");
+        Console.Write("Choose version (1-4) or 'exit': ");
         var input = Console.ReadLine()?.Trim();
         
         if (string.IsNullOrEmpty(input)) continue;
@@ -70,6 +72,7 @@ async Task SelectAndRunDatabaseVersion()
             "1" => "v1",
             "2" => "v2", 
             "3" => "v3",
+            "4" => "v4",
             "exit" or "quit" => "exit",
             _ => ""
         };
@@ -82,17 +85,17 @@ async Task SelectAndRunDatabaseVersion()
             return;
         }
         
-        Console.WriteLine("Invalid choice. Please enter 1, 2, 3, or 'exit'.");
+        Console.WriteLine("Invalid choice. Please enter 1, 2, 3, 4, or 'exit'.");
     }
 }
 
 // Unified database methods
 async Task RunWithDatabase(string version, string[] args)
 {
-    var db = CreateDatabase(version);
+    var db = await CreateDatabaseAsync(version);
     if (db is null)
     {
-        Console.WriteLine("Invalid version. Use v1, v2, or v3.");
+        Console.WriteLine("Invalid version. Use v1, v2, v3, or v4.");
         return;
     }
     
@@ -104,10 +107,10 @@ async Task RunWithDatabase(string version, string[] args)
 
 async Task RunInteractiveWithDatabase(string version)
 {
-    var db = CreateDatabase(version);
+    var db = await CreateDatabaseAsync(version);
     if (db is null)
     {
-        Console.WriteLine("Invalid version. Use v1, v2, or v3.");
+        Console.WriteLine("Invalid version. Use v1, v2, v3, or v4.");
         return;
     }
     
@@ -140,15 +143,22 @@ async Task RunInteractiveWithDatabase(string version)
     }
 }
 
-IDatabase? CreateDatabase(string version)
+async Task<IDatabase?> CreateDatabaseAsync(string version)
 {
     return version.ToLowerInvariant() switch
     {
         "v1" or "1" => new WorldsSimplestDbV1(),
         "v2" or "2" => new WorldsSimplestDbV2(),
         "v3" or "3" => CreateV3Database(),
+        "v4" or "4" => await CreateV4DatabaseAsync(),
         _ => null
     };
+}
+
+IDatabase? CreateDatabase(string version)
+{
+    // Legacy method for backwards compatibility
+    return CreateDatabaseAsync(version).GetAwaiter().GetResult();
 }
 
 IDatabase CreateV3Database()
@@ -156,6 +166,13 @@ IDatabase CreateV3Database()
     var indexStore = new IndexStore();
     var db = new WorldsSimplestDbV3(indexStore);
     LoadIndexWithFeedback(indexStore);
+    return db;
+}
+
+async Task<IDatabase> CreateV4DatabaseAsync()
+{
+    var db = new WorldsSimplestDbV4();
+    await db.InitializeAsync();
     return db;
 }
 
@@ -179,6 +196,7 @@ string GetVersionDescription(string version)
         "v1" => "Basic append-only",
         "v2" => "Basic append-only", 
         "v3" => "With index cache",
+        "v4" => "SSTable with WAL",
         _ => "Unknown"
     };
 }

@@ -41,16 +41,24 @@ public class WriteAheadLog : IDisposable
     }
     
     /// <summary>
-    /// Öffnet das WAL für Schreibzugriffe
+    /// Öffnet das WAL für Schreibzugriffe (thread-safe)
     /// </summary>
     public void Open()
     {
-        if (_walStream != null)
-            return;
-        
-        // Append-Modus: Fügt an bestehende Datei an (für Recovery)
-        _walStream = new FileStream(_walFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
-        _walWriter = new BinaryWriter(_walStream, Encoding.UTF8, leaveOpen: true);
+        _writeLock.Wait();
+        try
+        {
+            if (_walStream != null)
+                return;
+            
+            // Append-Modus: Fügt an bestehende Datei an (für Recovery)
+            _walStream = new FileStream(_walFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
+            _walWriter = new BinaryWriter(_walStream, Encoding.UTF8, leaveOpen: true);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
     
     /// <summary>
@@ -58,12 +66,17 @@ public class WriteAheadLog : IDisposable
     /// </summary>
     public async Task AppendAsync(string key, string value)
     {
-        if (_walWriter == null || _walStream == null)
-            throw new InvalidOperationException("WAL not opened. Call Open() first.");
-        
         await _writeLock.WaitAsync();
         try
         {
+            // Prüfe ob WAL noch geöffnet ist (könnte durch Clear() geschlossen worden sein)
+            if (_walWriter == null || _walStream == null)
+            {
+                // WAL wurde geschlossen, öffne es wieder
+                _walStream = new FileStream(_walFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
+                _walWriter = new BinaryWriter(_walStream, Encoding.UTF8, leaveOpen: true);
+            }
+            
             byte[] keyBytes = Encoding.UTF8.GetBytes(key);
             byte[] valueBytes = Encoding.UTF8.GetBytes(value);
             
@@ -128,25 +141,38 @@ public class WriteAheadLog : IDisposable
     }
     
     /// <summary>
-    /// Markiert das WAL als "aufgearbeitet" - kann nach erfolgreichem Flush gelöscht werden
+    /// Markiert das WAL als "aufgearbeitet" - kann nach erfolgreichem Flush gelöscht werden (thread-safe)
     /// </summary>
     public void Clear()
     {
         if (_disposed) return;
         
-        _walWriter?.Dispose();
-        _walStream?.Dispose();
-        _walWriter = null;
-        _walStream = null;
-        
-        // Lösche alte WAL-Datei
-        if (File.Exists(_walFile))
+        // Warte auf alle laufenden Writes
+        _writeLock.Wait();
+        try
         {
-            File.Delete(_walFile);
+            _walWriter?.Dispose();
+            _walStream?.Dispose();
+            _walWriter = null;
+            _walStream = null;
+            
+            // Lösche alte WAL-Datei
+            if (File.Exists(_walFile))
+            {
+                File.Delete(_walFile);
+            }
+            
+            // Öffne neue WAL für nächste Memtable (ohne Lock, da bereits gelockt)
+            if (!_disposed)
+            {
+                _walStream = new FileStream(_walFile, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 64 * 1024);
+                _walWriter = new BinaryWriter(_walStream, Encoding.UTF8, leaveOpen: true);
+            }
         }
-        
-        // Öffne neue WAL für nächste Memtable
-        Open();
+        finally
+        {
+            _writeLock.Release();
+        }
     }
     
     public void Dispose()
