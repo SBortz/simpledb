@@ -101,7 +101,7 @@ async Task RunWithDatabase(string version, string[] args)
     
     using (db)
     {
-        await ExecuteCommand(db, args);
+        await ExecuteCommand(db, args, false);
     }
 }
 
@@ -117,29 +117,74 @@ async Task RunInteractiveWithDatabase(string version)
     Console.WriteLine("Commands: set <key> <value> | get <key> | help | exit");
     Console.WriteLine();
 
-    using (db)
+    try
     {
-        while (true)
+        bool shouldExit = false;
+        
+        // Verwende await using für async Dispose (IAsyncDisposable)
+        if (db is IAsyncDisposable asyncDb)
         {
-            Console.Write("db> ");
-            var input = Console.ReadLine();
-            
-            if (string.IsNullOrWhiteSpace(input))
-                continue;
-
-            var parts = ParseCommandLine(input);
-            if (parts.Length == 0)
-                continue;
-
             try
             {
-                await ExecuteCommand(db, parts);
+                while (!shouldExit)
+                {
+                    Console.Write("db> ");
+                    var input = Console.ReadLine();
+                    
+                    if (string.IsNullOrWhiteSpace(input))
+                        continue;
+
+                    var parts = ParseCommandLine(input);
+                    if (parts.Length == 0)
+                        continue;
+
+                    try
+                    {
+                        shouldExit = await ExecuteCommand(db, parts, shouldExit);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error: {ex.Message}");
+                    }
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                Console.Error.WriteLine($"Error: {ex.Message}");
+                // Explizit flushen und WAL löschen beim Beenden
+                await asyncDb.DisposeAsync();
             }
         }
+        else
+        {
+            using (db)
+            {
+                while (!shouldExit)
+                {
+                    Console.Write("db> ");
+                    var input = Console.ReadLine();
+                    
+                    if (string.IsNullOrWhiteSpace(input))
+                        continue;
+
+                    var parts = ParseCommandLine(input);
+                    if (parts.Length == 0)
+                        continue;
+
+                    try
+                    {
+                        shouldExit = await ExecuteCommand(db, parts, shouldExit);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error: {ex.Message}");
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Fatal error: {ex.Message}");
     }
 }
 
@@ -153,12 +198,6 @@ async Task<IDatabase?> CreateDatabaseAsync(string version)
         "v4" or "4" => await CreateV4DatabaseAsync(),
         _ => null
     };
-}
-
-IDatabase? CreateDatabase(string version)
-{
-    // Legacy method for backwards compatibility
-    return CreateDatabaseAsync(version).GetAwaiter().GetResult();
 }
 
 IDatabase CreateV3Database()
@@ -201,7 +240,7 @@ string GetVersionDescription(string version)
     };
 }
 
-async Task ExecuteCommand(IDatabase database, string[] args)
+async Task<bool> ExecuteCommand(IDatabase database, string[] args, bool currentExitState)
 {
     switch (args[0].ToLowerInvariant())
     {
@@ -209,32 +248,34 @@ async Task ExecuteCommand(IDatabase database, string[] args)
             Utils.Require(args.Length >= 3, "set <key> <value>");
             await database.SetAsync(args[1], args[2]);
             Console.WriteLine("OK");
-            break;
+            return false;
 
         case "get":
             Utils.Require(args.Length >= 2, "get <key>");
             var val = await database.GetAsync(args[1]);
             if (val is null) Console.WriteLine("Key not found.");
             else Console.WriteLine(val);
-            break;
+            return false;
+            
         case "help":
             Console.WriteLine("""
             Available commands:
               set <key> <value>         - Store a key-value pair
               get <key>                 - Get value by key
               help                      - Show this help
-              exit/quit                 - Exit the program
+              exit/quit                 - Exit the program (flushes and cleans up)
             """);
-            break;
+            return false;
+            
         case "exit":
         case "quit":
             Console.WriteLine("Goodbye!");
-            Environment.Exit(0);
-            break;
+            // Schleife verlassen, damit Dispose aufgerufen wird (flusht und löscht WAL)
+            return true;
 
         default:
             Console.WriteLine($"Unknown command: {args[0]}. Type 'help' for available commands.");
-            break;
+            return false;
     }
 }
 

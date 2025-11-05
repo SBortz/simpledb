@@ -58,3 +58,5 @@ database.bin
 database.idx
 *.bin
 *.idx
+*.sst
+wal.log

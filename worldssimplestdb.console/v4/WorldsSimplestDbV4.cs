@@ -345,8 +345,31 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
     {
         if (_disposed) return;
         
-        // Flush Memtable vor dem Beenden
+        // Flush Memtable vor dem Beenden (mit WAL-Clear)
+        // WICHTIG: FlushAsync() ruft FlushMemtableInBackgroundAsync auf,
+        // welches _wal.Clear() aufruft, wenn der Flush erfolgreich ist
         await FlushAsync();
+        
+        // Stelle sicher, dass alle Memtable-Einträge geflusht sind
+        // Falls noch Einträge in der Memtable sind, flushen wir nochmal
+        while (_memtable.Count > 0)
+        {
+            await FlushAsync();
+        }
+        
+        // Leere WAL final (falls noch vorhanden - für den Fall, dass Flush fehlgeschlagen ist)
+        // Normalerweise wird WAL durch erfolgreichen Flush bereits geleert
+        if (_wal != null && File.Exists(_wal.WalFilePath))
+        {
+            try
+            {
+                _wal.Clear();
+            }
+            catch
+            {
+                // Ignoriere Fehler beim finalen Clear (wird beim Dispose aufgeräumt)
+            }
+        }
         
         // Dispose alle SSTableReader
         foreach (var sstable in _sstables)

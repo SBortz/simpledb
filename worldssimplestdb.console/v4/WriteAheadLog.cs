@@ -22,6 +22,11 @@ public class WriteAheadLog : IDisposable
     private BinaryWriter? _walWriter;
     private bool _disposed = false;
     
+    /// <summary>
+    /// Gibt den Pfad zur WAL-Datei zurück (für externe Checks)
+    /// </summary>
+    public string WalFilePath => _walFile;
+    
     public WriteAheadLog(string? walFile = null)
     {
         _walFile = walFile ?? GetSolutionDatabasePath("wal.log");
