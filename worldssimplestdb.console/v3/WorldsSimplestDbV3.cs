@@ -2,12 +2,39 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
-// Data format
-// ┌─────────┬─────────┬─────────┬─────────┐
-// │ keyLen  │ keyData │valueLen │valueData│
-// │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
-// └─────────┴─────────┴─────────┴─────────┘
-
+/// <summary>
+/// Version 3: High-Performance Implementation mit In-Memory Index
+/// 
+/// Speicherformat: Identisch zu V2 - Binäres Format mit Length-Prefixing
+/// ┌─────────┬─────────┬─────────┬─────────┐
+/// │ keyLen  │ keyData │valueLen │valueData│
+/// │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
+/// └─────────┴─────────┴─────────┴─────────┘
+/// 
+/// Eigenschaften:
+/// - Write: O(1) - Anhängen + Index-Update im Speicher
+/// - Read: O(1) - Direkter Seek zur Position via Index (kein Scan!)
+/// - Speicher: Binärformat + In-Memory Index (Dictionary&lt;string, long&gt;)
+/// 
+/// Unterschiede zu V2:
+/// + IndexStore hält eine Map von Key -> Datei-Offset im RAM
+/// + GetAsync macht direkten Seek zur Position (keine vollständige Datei-Durchsuchung)
+/// + Dramatisch schneller bei vielen Einträgen (O(1) statt O(n))
+/// + Index muss beim Start einmalig aufgebaut werden (durch Scan der Datei)
+/// 
+/// Vorteile:
+/// + Extrem schnelle Lesezugriffe auch bei Millionen von Einträgen
+/// + Schreibzugriffe bleiben schnell (nur append + RAM-Update)
+/// + Skaliert sehr gut
+/// 
+/// Nachteile:
+/// - Index benötigt RAM (ca. 50-100 Bytes pro Key)
+/// - Startup-Zeit zum Index-Aufbau (einmalig, aber kann bei großen DBs dauern)
+/// - Komplexere Architektur mit Dependency Injection (IIndexStore)
+/// 
+/// Use Case: Produktive Anwendungen mit vielen Einträgen (&gt;10.000), 
+///           wenn schnelle Lesezugriffe erforderlich sind
+/// </summary>
 public class WorldsSimplestDbV3(IIndexStore indexStore, string? dataFile = null) : IDatabase
 {
     private readonly string _dataFile = dataFile ?? GetSolutionDatabasePath("database.bin");

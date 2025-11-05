@@ -2,12 +2,33 @@ using System.Text;
 
 namespace worldssimplestdb.v2;
 
-// Data format
-// ┌─────────┬─────────┬─────────┬─────────┐
-// │ keyLen  │ keyData │valueLen │valueData│
-// │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
-// └─────────┴─────────┴─────────┴─────────┘
-
+/// <summary>
+/// Version 2: Optimierte Implementation mit Binär-Format
+/// 
+/// Speicherformat: Binäres Format mit Length-Prefixing
+/// ┌─────────┬─────────┬─────────┬─────────┐
+/// │ keyLen  │ keyData │valueLen │valueData│
+/// │ (4B)    │ (N B)   │ (4B)    │ (M B)   │
+/// └─────────┴─────────┴─────────┴─────────┘
+/// 
+/// Eigenschaften:
+/// - Write: O(1) - Neue Einträge werden binär an die Datei angehängt
+/// - Read: O(n) - Die gesamte Datei wird sequenziell durchsucht
+/// - Speicher: Binärformat, kompakter als V1
+/// 
+/// Unterschiede zu V1:
+/// + Binärformat ist effizienter als Text (kein Parsing, kein Encoding-Overhead)
+/// + Kann beliebige Strings speichern (auch mit Semikolon oder Newlines)
+/// + Etwas schneller beim Lesen durch strukturiertes Format
+/// - Datei nicht mehr human-readable
+/// 
+/// Nachteile:
+/// - Immer noch O(n) Lesezugriffe (vollständiger Scan)
+/// - Keine Index-Struktur für schnelle Lookups
+/// 
+/// Use Case: Kleine bis mittlere Datenmengen (1.000-10.000 Einträge), 
+///           wenn binäres Format bevorzugt wird
+/// </summary>
 public class WorldsSimplestDbV2(string? dataFile = null) : IDatabase
 {
     private readonly string _dataFile = dataFile ?? GetSolutionDatabasePath("database.bin");

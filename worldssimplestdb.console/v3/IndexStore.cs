@@ -2,6 +2,15 @@ using System.Text;
 
 namespace worldssimplestdb.v3;
 
+/// <summary>
+/// In-Memory Index für WorldsSimplestDbV3
+/// 
+/// Verwaltet eine Dictionary&lt;string, long&gt; die jeden Key auf seine Position
+/// in der Datenbankdatei mappt. Ermöglicht O(1) Lookups ohne vollständigen Datei-Scan.
+/// 
+/// Der Index wird beim Start durch Scannen der gesamten Datei aufgebaut (Load-Methode)
+/// und dann bei jedem Write-Vorgang im Speicher aktualisiert.
+/// </summary>
 public class IndexStore(string? dataFile = null) : IIndexStore
 {
     private readonly string _dataFile = dataFile ?? GetSolutionDatabasePath("database.bin");
