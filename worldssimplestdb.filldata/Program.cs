@@ -1,11 +1,12 @@
 ﻿using System.Text;
+using worldssimplestdb.v4;
 
 if (args.Length < 4)
 {
     Console.WriteLine("Usage: FillData <version> <size> <minValueLen> <maxValueLen>");
-    Console.WriteLine("Versions: v1, v2, v3");
+    Console.WriteLine("Versions: v1, v2, v3, v4");
     Console.WriteLine("Size: 10mb, 100mb, 1gb, etc.");
-    Console.WriteLine("Example: FillData v3 10mb 50 200");
+    Console.WriteLine("Example: FillData v4 10mb 50 200");
     return;
 }
 
@@ -46,6 +47,9 @@ switch (version)
         break;
     case "v3":
         await FillV3(targetSizeBytes, minValueLen, maxValueLen, () => writtenBytes, () => entryCount);
+        break;
+    case "v4":
+        await FillV4(targetSizeBytes, minValueLen, maxValueLen, () => writtenBytes, () => entryCount);
         break;
     default:
         Console.WriteLine($"Unknown version: {version}");
@@ -161,6 +165,53 @@ async Task FillV3(long targetSize, int minLen, int maxLen, Func<long> getWritten
             Console.WriteLine($"V3: {entryCount:N0} entries, {getWrittenBytes() / (1024.0 * 1024.0):F2} MB");
         }
     }
+}
+
+async Task FillV4(long targetSize, int minLen, int maxLen, Func<long> getWrittenBytes, Func<int> getEntryCount)
+{
+    var random = new Random(42);
+    
+    // Always create database in the solution directory
+    string solutionDir = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), ".."));
+    string dataDir = Path.Combine(solutionDir, "sstables");
+    
+    await using var db = new WorldsSimplestDbV4(
+        dataDirectory: dataDir,
+        memtableFlushSize: 10000
+    );
+    
+    while (getWrittenBytes() < targetSize)
+    {
+        string key = $"key_{getEntryCount():D8}";
+        string value = GenerateRandomValue(random, minLen, maxLen);
+        
+        await db.SetAsync(key, value);
+        
+        // Schätzung der geschriebenen Bytes (inkl. WAL + SSTable Overhead)
+        // WAL: 4+keyLen+4+valueLen Bytes pro Entry
+        // SSTable: Wird später geflusht, aber wir zählen es schon
+        // Zähle WAL-Format (wird sofort geschrieben) + SSTable-Format (wird später geflusht)
+        long estimatedBytes = 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // WAL
+        estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // SSTable Data
+        estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 8; // SSTable Index Entry
+        // SSTable Header (20 Bytes pro Datei, ~10000 Einträge pro SSTable) = ~0.002 Bytes pro Entry
+        // Wir ignorieren diesen kleinen Overhead für die Schätzung
+        
+        writtenBytes += estimatedBytes;
+        entryCount++;
+        
+        // Progress basierend auf tatsächlich geschriebenen Bytes (näherungsweise)
+        if (entryCount % 10000 == 0)
+        {
+            long currentWritten = getWrittenBytes();
+            Console.WriteLine($"V4: {entryCount:N0} entries, ~{currentWritten / (1024.0 * 1024.0):F2} MB " +
+                            $"({db.GetStats().Replace("\n", " | ")})");
+        }
+    }
+    
+    // Final flush
+    await db.FlushAsync();
+    Console.WriteLine($"V4: Final flush completed. {db.GetStats()}");
 }
 
 string GenerateRandomValue(Random random, int minLen, int maxLen)

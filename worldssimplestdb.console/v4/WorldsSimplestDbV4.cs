@@ -3,11 +3,23 @@ namespace worldssimplestdb.v4;
 /// <summary>
 /// Version 4: SSTable-basierte Implementation mit Log-Structured Merge Tree Prinzipien
 /// 
-/// Architektur:
+/// Architektur mit Double-Buffering:
+/// 
+/// Write-Flow (Non-Blocking):
 /// ┌──────────────┐
-/// │  Memtable    │ ← Neue Writes (in-memory, sortiert)
+/// │  Memtable A  │ ← Aktive Memtable (neue Writes)
 /// └──────┬───────┘
-///        │ Flush bei Überlauf
+///        │ Bei Überlauf: Switch zu B (sehr schnell, nur Lock)
+///        ▼
+/// ┌──────────────┐
+/// │  Memtable B  │ ← Neue aktive Memtable (Writes können sofort weiter)
+/// └──────────────┘
+/// 
+/// Flush-Flow (Background, ohne Lock):
+/// ┌──────────────┐
+/// │  Memtable A  │ ← Geflusht im Background (immutable während Flush)
+/// └──────┬───────┘
+///        │ Async Flush (kann dauern, blockiert keine Writes!)
 ///        ▼
 /// ┌──────────────┐
 /// │ SSTable 1    │ ← Neueste (immutable, sortiert)
@@ -24,6 +36,7 @@ namespace worldssimplestdb.v4;
 /// 
 /// Vorteile:
 /// + Sehr schnelle Writes (nur in-memory bis Flush)
+/// + Non-blocking Flush: Neue Writes können während Flush in neue Memtable
 /// + Effiziente Reads durch binäre Suche in sortierten SSTables
 /// + Immutable SSTables (keine Korruptionsgefahr)
 /// + Sortierung ermöglicht Range-Queries (nicht implementiert, aber möglich)
@@ -33,7 +46,7 @@ namespace worldssimplestdb.v4;
 /// Nachteile:
 /// - Komplexere Architektur
 /// - Read-Amplification (mehrere Dateien müssen durchsucht werden)
-/// - Memtable-Daten gehen bei Crash verloren (WAL nicht implementiert)
+/// - WAL-Overhead (jeder Write wird doppelt geschrieben: WAL + Memtable)
 /// - SSTables können fragmentiert werden (Compaction nötig)
 /// 
 /// Unterschiede zu V3:
@@ -45,21 +58,37 @@ namespace worldssimplestdb.v4;
 /// Use Case: Moderne Anwendungen mit hohem Write-Throughput,
 ///           wo sortierte Daten und Range-Queries nützlich sind
 /// </summary>
-public class WorldsSimplestDbV4 : IDatabase
+public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
 {
     private readonly string _dataDirectory;
     private readonly int _memtableFlushSize;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly SemaphoreSlim _readLock = new(1, 1); // Für Thread-sichere Reads
     
-    private Memtable _memtable;
+    private volatile Memtable _memtable; // volatile für Thread-Safety
     private readonly List<SSTableReader> _sstables = new();
     private bool _disposed = false;
+    private Task? _currentFlushTask = null; // Track laufende Flush-Operation
+    private readonly WriteAheadLog _wal; // Write-Ahead Log für Crash-Recovery
     
-    public WorldsSimplestDbV4(string? dataDirectory = null, int memtableFlushSize = SSTableFormat.DefaultMemtableFlushSize)
+    public WorldsSimplestDbV4(string? dataDirectory = null, int memtableFlushSize = SSTableFormat.DefaultMemtableFlushSize, bool enableWAL = true)
     {
         _dataDirectory = dataDirectory ?? GetSolutionDatabasePath("sstables");
         _memtableFlushSize = memtableFlushSize;
         _memtable = new Memtable(_memtableFlushSize);
+        
+        // WAL initialisieren
+        _wal = new WriteAheadLog();
+        if (enableWAL)
+        {
+            _wal.Open();
+        }
+        
+        // Recovery: WAL replayen (falls vorhanden)
+        if (enableWAL)
+        {
+            RecoverFromWALAsync().GetAwaiter().GetResult();
+        }
         
         // Lade existierende SSTables
         LoadExistingSSTables();
@@ -76,6 +105,34 @@ public class WorldsSimplestDbV4 : IDatabase
         }
         
         return dir != null ? Path.Combine(dir.FullName, directoryName) : directoryName;
+    }
+    
+    /// <summary>
+    /// Recovered verlorene Daten aus dem WAL nach einem Crash
+    /// </summary>
+    private async Task RecoverFromWALAsync()
+    {
+        try
+        {
+            var walEntries = await WriteAheadLog.ReplayAsync();
+            
+            if (!walEntries.Any())
+                return; // Kein WAL vorhanden oder leer
+            
+            Console.WriteLine($"Recovery: Found {walEntries.Count()} entries in WAL, replaying...");
+            
+            // Replay alle WAL-Entries in die Memtable
+            foreach (var (key, value) in walEntries)
+            {
+                _memtable.Set(key, value);
+            }
+            
+            Console.WriteLine($"Recovery: Replayed {walEntries.Count()} entries into memtable");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Error during WAL recovery: {ex.Message}");
+        }
     }
     
     private void LoadExistingSSTables()
@@ -102,15 +159,26 @@ public class WorldsSimplestDbV4 : IDatabase
     
     public async Task SetAsync(string key, string value)
     {
+        // WICHTIG: WAL zuerst (Crash-Safety: "Write-Ahead")
+        // Falls Crash nach WAL aber vor Memtable: Daten können replayed werden
+        await _wal.AppendAsync(key, value);
+        
+        // Kurzes Lock nur für Write + ggf. Memtable-Switch
         await _writeLock.WaitAsync();
         try
         {
-            _memtable.Set(key, value);
+            var currentMemtable = _memtable;
+            currentMemtable.Set(key, value);
             
-            // Flush wenn Memtable voll ist
-            if (_memtable.IsFull)
+            // Prüfe ob Flush nötig ist (aber noch nicht voll, um Race Conditions zu vermeiden)
+            if (currentMemtable.IsFull)
             {
-                await FlushMemtableAsync();
+                // Switch zu neuer Memtable (sehr schnell, keine I/O)
+                _memtable = new Memtable(_memtableFlushSize);
+                
+                // Starte Flush asynchron im Background (ohne Lock!)
+                // Warte nicht darauf - neue Writes können sofort weiter
+                _currentFlushTask = FlushMemtableInBackgroundAsync(currentMemtable);
             }
         }
         finally
@@ -119,30 +187,104 @@ public class WorldsSimplestDbV4 : IDatabase
         }
     }
     
-    private async Task FlushMemtableAsync()
+    /// <summary>
+    /// Flusht eine Memtable im Background (ohne Write-Lock zu halten)
+    /// </summary>
+    private async Task FlushMemtableInBackgroundAsync(Memtable memtableToFlush)
     {
-        if (_memtable.Count == 0)
+        // Warte auf vorherigen Flush falls noch laufend
+        if (_currentFlushTask != null && !_currentFlushTask.IsCompleted)
+        {
+            await _currentFlushTask;
+        }
+        
+        if (memtableToFlush.Count == 0)
             return;
         
-        // Schreibe aktuelle Memtable als SSTable
-        string sstableFile = await SSTableWriter.FlushAsync(_memtable, _dataDirectory);
+        try
+        {
+            // I/O-Operationen (können lang dauern, aber ohne Lock!)
+            string sstableFile = await SSTableWriter.FlushAsync(memtableToFlush, _dataDirectory);
+            
+            // Kurzer Lock nur für SSTable-Liste Update
+            await _writeLock.WaitAsync();
+            try
+            {
+                var reader = new SSTableReader(sstableFile);
+                _sstables.Insert(0, reader);
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
+            
+            // WAL löschen nach erfolgreichem Flush (Daten sind jetzt persistent in SSTable)
+            // Öffnet automatisch neue WAL für nächste Memtable
+            _wal.Clear();
+        }
+        catch (Exception ex)
+        {
+            // Logging könnte hier hinzugefügt werden
+            Console.WriteLine($"Error flushing memtable: {ex.Message}");
+            // WAL wird NICHT gelöscht - kann bei nächstem Start replayed werden
+            throw;
+        }
+    }
+    
+    /// <summary>
+    /// Flusht die aktuelle Memtable synchron (für Force-Flush)
+    /// </summary>
+    private async Task FlushCurrentMemtableAsync()
+    {
+        Memtable memtableToFlush;
         
-        // Öffne neue SSTable und füge sie am Anfang ein (neueste zuerst)
-        var reader = new SSTableReader(sstableFile);
-        _sstables.Insert(0, reader);
+        await _writeLock.WaitAsync();
+        try
+        {
+            memtableToFlush = _memtable;
+            _memtable = new Memtable(_memtableFlushSize); // Switch zu neuer Memtable
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
         
-        // Erstelle neue leere Memtable
-        _memtable.Clear();
+        // Flush ohne Lock
+        await FlushMemtableInBackgroundAsync(memtableToFlush);
     }
     
     public async Task<string?> GetAsync(string searchKey)
     {
+        // Snapshot der Memtable für Thread-Safety (keine Blockierung während Flush)
+        Memtable memtableSnapshot;
+        await _readLock.WaitAsync();
+        try
+        {
+            memtableSnapshot = _memtable;
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+        
         // 1. Prüfe zuerst Memtable (neueste Daten)
-        if (_memtable.TryGet(searchKey, out var value))
+        if (memtableSnapshot.TryGet(searchKey, out var value))
             return value;
         
         // 2. Durchsuche SSTables von neuesten zu ältesten
-        foreach (var sstable in _sstables)
+        // Snapshot für Thread-Safety
+        List<SSTableReader> sstablesSnapshot;
+        await _readLock.WaitAsync();
+        try
+        {
+            sstablesSnapshot = new List<SSTableReader>(_sstables);
+        }
+        finally
+        {
+            _readLock.Release();
+        }
+        
+        foreach (var sstable in sstablesSnapshot)
         {
             var result = await sstable.GetAsync(searchKey);
             if (result != null)
@@ -154,17 +296,23 @@ public class WorldsSimplestDbV4 : IDatabase
     
     /// <summary>
     /// Force-Flush der aktuellen Memtable (für Tests oder Shutdown)
+    /// Wartet auf alle laufenden Flush-Operationen
     /// </summary>
     public async Task FlushAsync()
     {
-        await _writeLock.WaitAsync();
-        try
+        // Warte auf laufenden Flush falls vorhanden
+        if (_currentFlushTask != null && !_currentFlushTask.IsCompleted)
         {
-            await FlushMemtableAsync();
+            await _currentFlushTask;
         }
-        finally
+        
+        // Flush aktuelle Memtable
+        await FlushCurrentMemtableAsync();
+        
+        // Warte auf diesen Flush
+        if (_currentFlushTask != null && !_currentFlushTask.IsCompleted)
         {
-            _writeLock.Release();
+            await _currentFlushTask;
         }
     }
     
@@ -180,10 +328,15 @@ public class WorldsSimplestDbV4 : IDatabase
     
     public void Dispose()
     {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
         if (_disposed) return;
         
         // Flush Memtable vor dem Beenden
-        FlushAsync().GetAwaiter().GetResult();
+        await FlushAsync();
         
         // Dispose alle SSTableReader
         foreach (var sstable in _sstables)
@@ -191,7 +344,9 @@ public class WorldsSimplestDbV4 : IDatabase
             sstable.Dispose();
         }
         
+        _wal?.Dispose();
         _writeLock?.Dispose();
+        _readLock?.Dispose();
         _disposed = true;
     }
 }
