@@ -92,8 +92,6 @@ SSTable-Datei (.sst):
 | Sortierung | ❌ | ❌ | ❌ | ✅ |
 | Binäre Suche | ❌ | ❌ | ❌ | ✅ |
 | Write Buffer | ❌ | ❌ | ❌ | ✅ |
-| Immutable Files | ❌ | ❌ | ❌ | ✅ |
-| Range Queries | ❌ | ❌ | ❌ | ✅** |
 
 \* In-Memory Writes sind schnell, periodischer Flush auf Disk  
 ** Konzeptuell möglich, aber nicht implementiert
