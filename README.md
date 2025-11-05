@@ -76,6 +76,7 @@ This project implements a simple key-value database with four different versions
   - Atomic SSTable writes: Temporary files ensure no corruption
   - Crash recovery: WAL replays on startup
   - Explicit cleanup: Flushes and WAL deletion on application exit
+  - **Note**: Compaction is not yet implemented (see [Future Improvements](#future-improvements))
 - **Pros**:
   - Very fast writes (in-memory until flush)
   - Non-blocking flush: Writes continue during background flush
@@ -88,8 +89,9 @@ This project implements a simple key-value database with four different versions
   - More complex architecture
   - Read amplification (multiple files must be searched)
   - WAL overhead (every write is written twice: WAL + memtable)
-  - SSTables can become fragmented (compaction needed)
+  - SSTables can become fragmented over time (compaction needed - **not implemented yet**)
 - **Use Case**: Production applications requiring both fast writes and efficient reads, with crash recovery
+- **Note**: Compaction is missing and would be the next evolutionary step for V4 (see [Future Improvements](#future-improvements) section)
 
 ## Projects
 
@@ -215,6 +217,31 @@ dotnet run v3 100mb 10 100
 - Two memtables: one active for writes, one immutable for flushing
 - Non-blocking writes: new writes continue to new memtable during flush
 - Background flush: old memtable flushes asynchronously without blocking
+
+## Future Improvements
+
+### Compaction for V4 (Not Implemented)
+
+**Compaction** is a critical feature for SSTable-based databases that is currently missing in V4. It would be the next evolutionary step to improve performance and reduce storage overhead.
+
+**What is Compaction?**
+Compaction is the process of merging multiple SSTables into fewer, larger SSTables. This helps:
+- **Reduce Read Amplification**: Fewer files to search during reads
+- **Remove Duplicate/Deleted Keys**: Consolidate multiple versions of the same key
+- **Free Disk Space**: Remove obsolete entries and compact storage
+- **Improve Performance**: Fewer files mean faster binary searches
+
+**Why it's needed:**
+- Without compaction, SSTables accumulate over time, increasing read amplification
+- Old versions of keys remain in older SSTables, wasting space
+- Deleted keys (if implemented) remain in SSTables until compaction removes them
+
+**Potential Implementation Strategy:**
+- Level-based compaction (like LevelDB/RocksDB): Organize SSTables into levels
+- Size-tiered compaction: Merge SSTables of similar sizes
+- Background compaction: Run asynchronously without blocking writes
+
+This would be a natural next step for V4 to evolve into a production-ready database implementation.
 
 ## Performance Characteristics
 
