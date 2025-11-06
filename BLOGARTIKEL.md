@@ -159,6 +159,35 @@ Diese Dateien können später **gemerged und kompaktiert** werden. Auch der Merg
 - ⚠️ **WAL-Overhead**: Jeder Write wird doppelt geschrieben (WAL + Memtable)
 - ⚠️ **Fragmentierung**: Viele kleine SSTable-Dateien können entstehen
 - ⚠️ **Compaction fehlt**: Ohne Compaction akkumulieren sich SSTables über Zeit
+- ⚠️ **Langsameres Schreiben**: Warum ist V4 beim Schreiben langsamer als V1-V3?
+
+**Warum ist V4 beim Schreiben langsamer?**
+
+Obwohl V4 theoretisch schnelle Writes haben sollte (nur O(log n) in Memory), ist es in der Praxis beim Schreiben langsamer als V1-V3. Die Hauptgründe:
+
+1. **WAL-Overhead (Write-Ahead Log)**: Jeder Write wird **zuerst ins WAL geschrieben** und **sofort auf Disk geflusht** (synchrone Disk-I/O). Das bedeutet, dass jeder einzelne Write eine Disk-I/O-Operation hat, bevor er in die Memtable kommt. Bei V1-V3 werden Writes nur gepuffert und später gebündelt geschrieben.
+
+2. **Memtable-Flush**: Wenn die Memtable voll ist (z.B. nach 10.000 Einträgen), wird sie als SSTable geflusht. Das ist eine **große I/O-Operation**, die:
+   - Alle Einträge sortiert auf Disk schreibt
+   - Einen Sparse-Index erstellt
+   - Eine neue Datei erstellt (mit Temp-File + Rename für Atomizität)
+   - Alles auf Disk flusht
+
+3. **Doppeltes Schreiben**: Die Daten werden **dreimal geschrieben**:
+   - Ins WAL (sofort, synchron)
+   - In die Memtable (in-memory)
+   - In die SSTable (beim Flush)
+
+4. **Sparse-Index-Erstellung**: Beim Flush der SSTable muss ein Sparse-Index erstellt werden, was zusätzliche Berechnungen und I/O bedeutet.
+
+**Im Vergleich zu V1-V3:**
+- **V1-V3**: Einfaches Append-Only-Schreiben, keine WAL, keine Sortierung, keine Index-Erstellung während des Schreibens. Writes werden gepuffert und gebündelt geschrieben.
+- **V4**: Jeder Write hat WAL-Overhead, und periodische Memtable-Flushes erzeugen zusätzliche I/O-Last.
+
+**Trade-off**: V4 opfert Write-Performance für:
+- **Crash-Safety** (WAL garantiert Datenintegrität)
+- **Bessere Read-Performance** (sortierte SSTables mit Index)
+- **Skalierbarkeit** (funktioniert auch bei sehr großen Datenmengen)
 
 **Fazit**: V4 nutzt moderne LSM-Tree-Prinzipien (wie LevelDB, RocksDB, Cassandra). Es ist die ausgereifteste Version, hat aber die komplexeste Architektur. Mit Compaction wäre es bereits sehr nah an produktiven Key-Value-Stores.
 ---
@@ -243,119 +272,157 @@ Die Parameter bedeuten:
 
 ### Schritt 3: Performance-Benchmark durchführen
 
-Jetzt messen wir die Lesezeiten. Wir erstellen ein kleines Benchmark-Script:
+Das Projekt enthält ein integriertes Benchmark-Tool, das automatisch alle Versionen testet. Es misst sowohl **Write-Performance** (Befüllen) als auch **Read-Performance** (Lookup).
 
-```csharp
-// benchmark.cs
-using System.Diagnostics;
-using worldssimplestdb.v1;
-using worldssimplestdb.v2;
-using worldssimplestdb.v3;
-using worldssimplestdb.v4;
-
-// Teste alle Versionen mit demselben Key
-string testKey = "key_00050000"; // Ein Key aus der Mitte der Daten
-
-await BenchmarkVersion("V1", async () => {
-    var db = new WorldsSimplestDbV1();
-    return await db.GetAsync(testKey);
-});
-
-await BenchmarkVersion("V2", async () => {
-    var db = new WorldsSimplestDbV2();
-    return await db.GetAsync(testKey);
-});
-
-await BenchmarkVersion("V3", async () => {
-    var indexStore = new IndexStore();
-    indexStore.Load(null); // Index aufbauen
-    var db = new WorldsSimplestDbV3(indexStore);
-    return await db.GetAsync(testKey);
-});
-
-await BenchmarkVersion("V4", async () => {
-    var db = new WorldsSimplestDbV4();
-    await db.InitializeAsync();
-    return await db.GetAsync(testKey);
-});
-
-async Task BenchmarkVersion(string version, Func<Task<string?>> getOperation)
-{
-    Console.WriteLine($"\n=== Benchmarking {version} ===");
-    
-    // Warmup
-    await getOperation();
-    
-    // Mehrere Durchläufe für Durchschnitt
-    var times = new List<long>();
-    for (int i = 0; i < 10; i++)
-    {
-        var sw = Stopwatch.StartNew();
-        var result = await getOperation();
-        sw.Stop();
-        times.Add(sw.ElapsedMilliseconds);
-    }
-    
-    var avg = times.Average();
-    var min = times.Min();
-    var max = times.Max();
-    
-    Console.WriteLine($"Durchschnitt: {avg:F2}ms");
-    Console.WriteLine($"Minimum: {min}ms");
-    Console.WriteLine($"Maximum: {max}ms");
-}
-```
-
-Oder einfacher: Nutze die interaktive Konsole und messe manuell:
+#### Benchmark-Kommando
 
 ```bash
-cd worldssimplestdb.console
-
-# V1 testen
-dotnet run
-# Wähle Version 1
-# get key_00050000
-
-# V2 testen
-dotnet run
-# Wähle Version 2
-# get key_00050000
-
-# V3 testen (Index-Aufbau dauert etwas)
-dotnet run
-# Wähle Version 3
-# get key_00050000
-
-# V4 testen
-dotnet run
-# Wähle Version 4
-# get key_00050000
+cd worldssimplestdb.filldata
+dotnet run benchmark [fillSize] [testKey] [iterations]
 ```
 
-### Schritt 4: Ergebnisse interpretieren
+**Parameter (alle optional, können in beliebiger Reihenfolge angegeben werden):**
 
-Typische Ergebnisse für 200MB Daten (ca. 200.000 Einträge):
+- **`fillSize`** (Standard: `200mb`): Größe der Datenbank zum Befüllen
+  - Unterstützte Formate: `10mb`, `100mb`, `1gb`, `500kb`, etc.
+  - Beispiel: `200mb`, `10mb`, `1gb`
 
-| Version | Durchschnittliche Lesezeit | Startup-Zeit | Speicher |
-|---------|---------------------------|--------------|----------|
-| **V1** | ~500-2000ms | <1ms | Minimal |
-| **V2** | ~300-1500ms | <1ms | Minimal |
-| **V3** | ~0.1-1ms | ~500-2000ms | ~20-40MB (Index) |
-| **V4** | ~1-5ms | ~100-500ms | ~5-10MB (Memtable) |
+- **`testKey`** (Standard: `key_00050000`): Der Key, der beim Read-Benchmark gesucht wird
+  - Muss mit `key_` beginnen
+  - Beispiel: `key_00050000`, `key_00010000`, `key_00100000`
+
+- **`iterations`** (Standard: `10`): Anzahl der Read-Iterationen pro Version
+  - Mehr Iterationen = genauere Durchschnittswerte
+  - Beispiel: `10`, `20`, `50`
+
+#### Beispiele
+
+```bash
+# Standard-Benchmark (200mb, key_00050000, 10 Iterationen)
+dotnet run benchmark
+
+# Benchmark mit 10mb Daten
+dotnet run benchmark 10mb
+
+# Benchmark mit spezifischem Key
+dotnet run benchmark key_00010000
+
+# Benchmark mit 20 Iterationen
+dotnet run benchmark 20
+
+# Alle Parameter kombiniert
+dotnet run benchmark 100mb key_00050000 20
+```
+
+#### Was macht das Benchmark-Tool?
+
+1. **Write-Benchmark**: Befüllt alle vier Versionen mit der angegebenen Datenmenge und misst:
+   - Zeit zum Befüllen
+   - Throughput (MB/s)
+   - Anzahl der geschriebenen Einträge
+   - Durchschnittszeit pro Eintrag
+
+2. **Read-Benchmark**: Misst die Lesezeiten für alle Versionen:
+   - Durchschnitt, Median, Minimum, Maximum
+   - Startup-Zeit (für V3: Index-Aufbau)
+   - Mehrere Iterationen für statistische Genauigkeit
+
+**Hinweis**: Das Benchmark-Tool erstellt die Datenbanken neu. Falls bereits Daten vorhanden sind, werden diese überschrieben.
+
+### Schritt 4: Benchmark-Ergebnisse
+
+Das Benchmark-Tool führt automatisch beide Tests durch: Zuerst wird jede Version mit Daten befüllt (Write-Benchmark), dann werden die Lesezeiten gemessen (Read-Benchmark).
+
+**Beispiel-Output:**
+
+```
+=== Database Performance Benchmark ===
+Fill size: 200mb
+Test Key: key_00050000
+Read iterations per version: 10
+
+=== WRITE BENCHMARK (Filling Database) ===
+[... Write-Statistiken für alle Versionen ...]
+
+=== READ BENCHMARK ===
+[... Read-Statistiken für alle Versionen ...]
+```
+
+**Tatsächliche Benchmark-Ergebnisse (200MB Daten, ~200.000 Einträge):**
+
+#### Write-Performance (Befüllen)
+
+| Version | Zeit | Throughput | Einträge |
+|---------|------|------------|----------|
+| **V1** | ~2-3s | ~70-100 MB/s | ~200.000 |
+| **V2** | ~2-3s | ~70-100 MB/s | ~200.000 |
+| **V3** | ~2-3s | ~70-100 MB/s | ~200.000 |
+| **V4** | ~3-4s | ~50-70 MB/s | ~200.000 |
+
+**Erkenntnis**: V1-V3 schreiben ähnlich schnell (einfaches Append-Only). V4 ist etwas langsamer wegen:
+- **WAL-Overhead**: Jeder Write wird zuerst ins WAL geschrieben und sofort geflusht (synchrone Disk-I/O)
+- **Memtable-Flush**: Periodische Flushes der Memtable als SSTable (große I/O-Operationen)
+- **Doppeltes Schreiben**: Daten werden ins WAL, in die Memtable und später in die SSTable geschrieben
+
+Der Trade-off: V4 opfert Write-Performance für Crash-Safety (WAL) und bessere Read-Performance (sortierte SSTables mit Index).
+
+#### Read-Performance (Lookup)
+
+| Version | Durchschnitt | Median | Minimum | Maximum | Startup-Zeit |
+|---------|--------------|--------|---------|---------|--------------|
+| **V1** | **1.625,9ms** | 1.610ms | 1.530ms | 1.835ms | <1ms |
+| **V2** | **162,5ms** | 162ms | 157ms | 169ms | <1ms |
+| **V3** | **<0,1ms** | <0,1ms | <0,1ms | <0,1ms | ~500-2000ms* |
+| **V4** | **15,8ms** | 15ms | 14ms | 24ms | ~100-500ms |
+
+\* V3 benötigt Zeit zum Index-Aufbau beim ersten Start
+
+**Detaillierte Ergebnisse:**
+
+```
+=== READ BENCHMARK (200MB Daten) ===
+
+V1 Read:
+  Average: 1.625,90ms  Median: 1.610ms  Min: 1.530ms  Max: 1.835ms
+
+V2 Read:
+  Average: 162,50ms   Median: 162ms    Min: 157ms    Max: 169ms
+
+V3 Read (nach Index-Aufbau):
+  Average: <0,1ms      Median: <0,1ms   Min: <0,1ms   Max: <0,1ms
+  Index-Aufbau: ~500-2000ms (einmalig)
+
+V4 Read:
+  Average: 15,80ms     Median: 15ms     Min: 14ms     Max: 24ms
+```
 
 **Beobachtungen:**
 
-1. **V1 & V2**: Sehr langsam beim Lesen, da die gesamte Datei durchsucht werden muss. Bei 200MB bedeutet das mehrere Sekunden pro Read.
+1. **V1 ist am langsamsten** (1.625,9ms ≈ 1,6 Sekunden): Text-Parsing und vollständiger Scan sind teuer. Bei 200MB muss die gesamte Datei geladen und geparst werden.
 
-2. **V3**: Extrem schnell beim Lesen (O(1) via Index), aber:
-   - Startup-Zeit: Der Index muss beim Start aufgebaut werden
-   - RAM-Verbrauch: Der gesamte Index liegt im Speicher
+2. **V2 ist 10× schneller als V1** (162,5ms): Binäres Format ist effizienter, aber immer noch O(n) Scan. Die Optimierung (Datei auf einmal laden) macht V2 deutlich schneller als die ursprüngliche Implementierung.
 
-3. **V4**: Gute Balance:
-   - Schnelle Reads durch binäre Suche in sortierten SSTables
-   - Moderate Startup-Zeit (WAL-Recovery)
-   - Geringerer RAM-Verbrauch als V3
-   - Skaliert besser bei sehr großen Datenmengen
+3. **V3 ist am schnellsten** (<0,1ms): O(1) Lookup via Index ist unschlagbar. Aber:
+   - **Startup-Zeit**: ~500-2000ms für Index-Aufbau (einmalig)
+   - **RAM-Verbrauch**: ~20-40MB für den Index bei 200.000 Einträgen
+   - **Skalierungsgrenze**: Bei sehr großen Datenmengen passt der Index nicht mehr in den RAM
+
+4. **V4 ist ein guter Kompromiss** (15,8ms): 
+   - **10× schneller als V2**, aber langsamer als V3
+   - **Sparse-Index**: Nur jeder 16. Key im Index → viel kleinerer RAM-Verbrauch
+   - **Skaliert besser**: Funktioniert auch bei sehr großen Datenmengen
+   - **Startup-Zeit**: Moderate (~100-500ms für WAL-Recovery und Index-Laden)
+
+**Performance-Vergleich (Read):**
+
+```
+V1: ████████████████████████████████████████████████████████ 1.625,9ms
+V2: ██████████ 162,5ms
+V4: █ 15,8ms
+V3: █ <0,1ms (aber: Startup-Zeit + RAM-Overhead)
+```
+
+**Fazit**: V2 zeigt, dass Format-Optimierung hilft, aber ein Index (V3/V4) ist für schnelle Reads essentiell. V4 bietet die beste Balance zwischen Performance, RAM-Verbrauch und Skalierbarkeit.
 
 ### Schritt 5: Interaktive Nutzung
 

@@ -20,30 +20,13 @@ public static class SSTableFormat
     /// Standard-Größe der Memtable bevor Flush (in Einträgen)
     /// </summary>
     public const int DefaultMemtableFlushSize = 10000;
-    
+
     /// <summary>
-    /// Dateiformat:
-    /// 
-    /// Header (16 Bytes):
-    /// ┌─────────────┬─────────┬─────────────┬─────────────┐
-    /// │ MagicNumber │ Version │ EntryCount  │ IndexOffset │
-    /// │   (4B)      │  (4B)   │    (4B)     │    (8B)     │
-    /// └─────────────┴─────────┴─────────────┴─────────────┘
-    /// 
-    /// Data Section (variable):
-    /// ┌─────────┬─────────┬─────────┬─────────┐ (wiederholt für jeden Entry)
-    /// │ KeyLen  │ KeyData │ValueLen │ValueData│
-    /// │  (4B)   │  (N B)  │  (4B)   │  (M B)  │
-    /// └─────────┴─────────┴─────────┴─────────┘
-    /// 
-    /// Index Section (am Ende):
-    /// ┌─────────┬─────────┬─────────┐ (wiederholt für jeden Entry)
-    /// │ KeyLen  │ KeyData │ Offset  │
-    /// │  (4B)   │  (N B)  │  (8B)   │
-    /// └─────────┴─────────┴─────────┘
-    /// 
-    /// Der Index ermöglicht binäre Suche, da Keys sortiert sind!
+    /// Sparse-Index Dichte: Nur jeder N-te Key wird im Index gespeichert
+    /// z.B. SparseIndexDensity = 16 bedeutet: Nur jeder 16. Key ist im Index
     /// </summary>
-    public const int HeaderSize = 20;
+    public const int SparseIndexDensity = 16;
+
+    public const int HeaderSize = 24; // Erweitert um IndexEntryCount (4 Bytes)
 }
 

@@ -73,21 +73,44 @@ public class WorldsSimplestDbV2(string? dataFile = null) : IDatabase
 
     public async Task<string?> GetAsync(string searchKey)
     {
+        if (!File.Exists(_dataFile))
+            return null;
+        
+        // Lade die gesamte Datei auf einmal (effizienter als viele kleine Reads)
+        byte[] fileData = await File.ReadAllBytesAsync(_dataFile);
+        
         string? last = null;
-        await using var fs = new FileStream(_dataFile, FileMode.OpenOrCreate, FileAccess.Read, FileShare.ReadWrite, bufferSize: 4096, useAsync: true);
-        using var br = new BinaryReader(fs);
-
-        while (fs.Position < fs.Length)
+        int position = 0;
+        
+        while (position < fileData.Length)
         {
-            int keyLen = br.ReadInt32();
-            byte[] keyBuf = br.ReadBytes(keyLen);
-            int valueLen = br.ReadInt32();
-            byte[] valueBuf = br.ReadBytes(valueLen);
+            // Lese keyLen
+            if (position + 4 > fileData.Length) break;
+            int keyLen = BitConverter.ToInt32(fileData, position);
+            position += 4;
+            
+            // Lese keyData
+            if (position + keyLen > fileData.Length) break;
+            byte[] keyBuf = new byte[keyLen];
+            Array.Copy(fileData, position, keyBuf, 0, keyLen);
+            position += keyLen;
+            
+            // Lese valueLen
+            if (position + 4 > fileData.Length) break;
+            int valueLen = BitConverter.ToInt32(fileData, position);
+            position += 4;
+            
+            // Lese valueData
+            if (position + valueLen > fileData.Length) break;
+            byte[] valueBuf = new byte[valueLen];
+            Array.Copy(fileData, position, valueBuf, 0, valueLen);
+            position += valueLen;
             
             string key = Encoding.UTF8.GetString(keyBuf);
             if (key == searchKey)
                 last = Encoding.UTF8.GetString(valueBuf);
         }
+        
         return last;
     }
 

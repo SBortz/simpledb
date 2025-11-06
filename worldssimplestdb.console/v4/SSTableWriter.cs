@@ -7,11 +7,11 @@ namespace worldssimplestdb.v4;
 ///     
 /// Dateiformat:
 /// 
-/// Header (16 Bytes):
-/// ┌─────────────┬─────────┬─────────────┬─────────────┐
-/// │ MagicNumber │ Version │ EntryCount  │ IndexOffset │
-/// │   (4B)      │  (4B)   │    (4B)     │    (8B)     │
-/// └─────────────┴─────────┴─────────────┴─────────────┘
+/// Header (24 Bytes):
+/// ┌─────────────┬─────────┬─────────────┬─────────────┬─────────────┐
+/// │ MagicNumber │ Version │ EntryCount  │IndexEntryCnt│ IndexOffset │
+/// │   (4B)      │  (4B)   │    (4B)     │    (4B)     │    (8B)     │
+/// └─────────────┴─────────┴─────────────┴─────────────┴─────────────┘
 /// 
 /// Data Section (variable):
 /// ┌─────────┬─────────┬─────────┬─────────┐ (wiederholt für jeden Entry)
@@ -19,13 +19,15 @@ namespace worldssimplestdb.v4;
 /// │  (4B)   │  (N B)  │  (4B)   │  (M B)  │
 /// └─────────┴─────────┴─────────┴─────────┘
 /// 
-/// Index Section (am Ende):
-/// ┌─────────┬─────────┬─────────┐ (wiederholt für jeden Entry)
+/// Index Section (am Ende, Sparse-Index):
+/// ┌─────────┬─────────┬─────────┐ (wiederholt für jeden N-ten Entry)
 /// │ KeyLen  │ KeyData │ Offset  │
 /// │  (4B)   │  (N B)  │  (8B)   │
 /// └─────────┴─────────┴─────────┘
 /// 
+/// Sparse-Index: Nur jeder N-te Key (z.B. jeder 16.) wird im Index gespeichert.
 /// Der Index ermöglicht binäre Suche, da Keys sortiert sind!
+/// Nach der binären Suche im Index wird linear im Bereich gescannt.
 /// </summary>
 public class SSTableWriter
 {
@@ -67,15 +69,22 @@ public class SSTableWriter
                 bw.Write(SSTableFormat.MagicNumber);
                 bw.Write(SSTableFormat.Version);
                 bw.Write(entries.Count);
+                bw.Write(0); // IndexEntryCount Platzhalter
                 bw.Write(0L); // IndexOffset Platzhalter
                 
-                // 2. Schreibe sortierte Data Section und sammle Index-Einträge
+                // 2. Schreibe sortierte Data Section und sammle Sparse-Index-Einträge
                 var indexEntries = new List<(string key, long offset)>();
+                int entryIndex = 0;
                 
                 foreach (var entry in entries)
                 {
                     long offset = fs.Position;
-                    indexEntries.Add((entry.Key, offset));
+                    
+                    // Nur jeden N-ten Key in den Index aufnehmen (Sparse-Index)
+                    if (entryIndex % SSTableFormat.SparseIndexDensity == 0)
+                    {
+                        indexEntries.Add((entry.Key, offset));
+                    }
                     
                     byte[] keyBytes = Encoding.UTF8.GetBytes(entry.Key);
                     byte[] valueBytes = Encoding.UTF8.GetBytes(entry.Value);
@@ -84,9 +93,11 @@ public class SSTableWriter
                     bw.Write(keyBytes);
                     bw.Write(valueBytes.Length);
                     bw.Write(valueBytes);
+                    
+                    entryIndex++;
                 }
                 
-                // 3. Schreibe Index Section
+                // 3. Schreibe Sparse-Index Section
                 long indexOffset = fs.Position;
                 
                 foreach (var (key, offset) in indexEntries)
@@ -97,8 +108,9 @@ public class SSTableWriter
                     bw.Write(offset);
                 }
             
-                // 4. Aktualisiere Header mit korrektem IndexOffset
-                fs.Seek(headerPos + 12, SeekOrigin.Begin); // Position von IndexOffset im Header
+                // 4. Aktualisiere Header mit korrektem IndexEntryCount und IndexOffset
+                fs.Seek(headerPos + 12, SeekOrigin.Begin); // Position von IndexEntryCount im Header
+                bw.Write(indexEntries.Count);
                 bw.Write(indexOffset);
                 
                 // WICHTIG: Flush alles auf Disk bevor Dispose (für Crash-Safety)
