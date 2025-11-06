@@ -54,9 +54,11 @@ TestResult.xml
 nunit-*.xml
 
 # Database files
+database.txt
 database.bin
 database.idx
 *.bin
 *.idx
 *.sst
 wal.log
+sstables/
