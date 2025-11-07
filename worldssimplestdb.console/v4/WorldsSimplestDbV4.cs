@@ -61,7 +61,7 @@ namespace worldssimplestdb.v4;
 public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
 {
     private readonly string _dataDirectory;
-    private readonly int _memtableFlushSize;
+    private readonly long _memtableFlushSizeBytes;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly SemaphoreSlim _readLock = new(1, 1); // Für Thread-sichere Reads
     
@@ -71,11 +71,11 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
     private Task? _currentFlushTask = null; // Track laufende Flush-Operation
     private readonly WriteAheadLog _wal; // Write-Ahead Log für Crash-Recovery
     
-    public WorldsSimplestDbV4(string? dataDirectory = null, int memtableFlushSize = SSTableFormat.DefaultMemtableFlushSize, bool enableWAL = true)
+    public WorldsSimplestDbV4(string? dataDirectory = null, long memtableFlushSizeBytes = SSTableFormat.DefaultMemtableFlushSizeBytes, bool enableWAL = true)
     {
         _dataDirectory = dataDirectory ?? GetSolutionDatabasePath("sstables");
-        _memtableFlushSize = memtableFlushSize;
-        _memtable = new Memtable(_memtableFlushSize);
+        _memtableFlushSizeBytes = memtableFlushSizeBytes;
+        _memtable = new Memtable(_memtableFlushSizeBytes);
         
         // WAL initialisieren
         _wal = new WriteAheadLog();
@@ -184,7 +184,7 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
             if (currentMemtable.IsFull)
             {
                 // Switch zu neuer Memtable (sehr schnell, keine I/O)
-                _memtable = new Memtable(_memtableFlushSize);
+                _memtable = new Memtable(_memtableFlushSizeBytes);
                 
                 // Starte Flush asynchron im Background (ohne Lock!)
                 // Warte nicht darauf - neue Writes können sofort weiter
@@ -252,7 +252,7 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
         try
         {
             memtableToFlush = _memtable;
-            _memtable = new Memtable(_memtableFlushSize); // Switch zu neuer Memtable
+            _memtable = new Memtable(_memtableFlushSizeBytes); // Switch zu neuer Memtable
         }
         finally
         {
@@ -331,7 +331,7 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
     /// </summary>
     public string GetStats()
     {
-        return $"Memtable: {_memtable.Count} entries\n" +
+        return $"Memtable: {_memtable.Count} entries (~{_memtable.ApproximateSizeBytes / (1024.0 * 1024.0):F1} MB)\n" +
                $"SSTables: {_sstables.Count} files\n" +
                $"Total SSTable entries: {_sstables.Sum(s => s.EntryCount)}";
     }

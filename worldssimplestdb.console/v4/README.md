@@ -189,10 +189,10 @@ public Snapshot CreateSnapshot()
 ## Verwendung
 
 ```csharp
-// Erstelle Datenbank mit Custom Memtable-Größe
+// Erstelle Datenbank mit Custom Memtable-Größe (hier: 200 MB bevor Flush)
 await using var db = new WorldsSimplestDbV4(
     dataDirectory: "./mydata", 
-    memtableFlushSize: 5000
+    memtableFlushSizeBytes: 200 * 1024 * 1024
 );
 
 // Schreibe Daten (gehen in Memtable)

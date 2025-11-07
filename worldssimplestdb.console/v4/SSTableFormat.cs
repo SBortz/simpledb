@@ -17,9 +17,9 @@ public static class SSTableFormat
     public const int Version = 1;
     
     /// <summary>
-    /// Standard-Größe der Memtable bevor Flush (in Einträgen)
+    /// Standard-Größe der Memtable bevor Flush (in Bytes)
     /// </summary>
-    public const int DefaultMemtableFlushSize = 10000;
+    public const long DefaultMemtableFlushSizeBytes = 100 * 1024 * 1024; // ~100 MB
 
     /// <summary>
     /// Sparse-Index Dichte: Nur jeder N-te Key wird im Index gespeichert

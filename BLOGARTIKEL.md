@@ -167,7 +167,7 @@ Obwohl V4 theoretisch schnelle Writes haben sollte (nur O(log n) in Memory), ist
 
 1. **WAL-Overhead (Write-Ahead Log)**: Jeder Write wird **zuerst ins WAL geschrieben** und **sofort auf Disk geflusht** (synchrone Disk-I/O). Das bedeutet, dass jeder einzelne Write eine Disk-I/O-Operation hat, bevor er in die Memtable kommt. Bei V1-V3 werden Writes nur gepuffert und später gebündelt geschrieben.
 
-2. **Memtable-Flush**: Wenn die Memtable voll ist (z.B. nach 10.000 Einträgen), wird sie als SSTable geflusht. Das ist eine **große I/O-Operation**, die:
+2. **Memtable-Flush**: Wenn die Memtable voll ist (z.B. nach ~100MB an Daten), wird sie als SSTable geflusht. Das ist eine **große I/O-Operation**, die:
    - Alle Einträge sortiert auf Disk schreibt
    - Einen Sparse-Index erstellt
    - Eine neue Datei erstellt (mit Temp-File + Rename für Atomizität)
@@ -278,7 +278,7 @@ Das Projekt enthält ein integriertes Benchmark-Tool, das automatisch alle Versi
 
 ```bash
 cd worldssimplestdb.filldata
-dotnet run benchmark [fillSize] [testKey] [iterations]
+dotnet run benchmark [fillSize] [iterations] [v1|v2|v3|v4|all]
 ```
 
 **Parameter (alle optional, können in beliebiger Reihenfolge angegeben werden):**
@@ -287,31 +287,35 @@ dotnet run benchmark [fillSize] [testKey] [iterations]
   - Unterstützte Formate: `10mb`, `100mb`, `1gb`, `500kb`, etc.
   - Beispiel: `200mb`, `10mb`, `1gb`
 
-- **`testKey`** (Standard: `key_00050000`): Der Key, der beim Read-Benchmark gesucht wird
-  - Muss mit `key_` beginnen
-  - Beispiel: `key_00050000`, `key_00010000`, `key_00100000`
-
 - **`iterations`** (Standard: `10`): Anzahl der Read-Iterationen pro Version
   - Mehr Iterationen = genauere Durchschnittswerte
   - Beispiel: `10`, `20`, `50`
 
+- **`v1|v2|v3|v4|all`**: Welche Versionen gebenchmarkt werden sollen
+  - Standard: alle Versionen (`all` oder keine Angabe)
+  - Beispiel: `v2`, `v3 v4`, `all`
+  - Mehrere Versionen können hintereinander angegeben werden
+
 #### Beispiele
 
 ```bash
-# Standard-Benchmark (200mb, key_00050000, 10 Iterationen)
+# Standard-Benchmark (200mb, alle Versionen, 10 Iterationen)
 dotnet run benchmark
 
 # Benchmark mit 10mb Daten
 dotnet run benchmark 10mb
 
-# Benchmark mit spezifischem Key
-dotnet run benchmark key_00010000
-
 # Benchmark mit 20 Iterationen
 dotnet run benchmark 20
 
-# Alle Parameter kombiniert
-dotnet run benchmark 100mb key_00050000 20
+# Nur Version 2 testen
+dotnet run benchmark v2
+
+# 1GB Daten, nur Version 3 & 4, 20 Iterationen
+dotnet run benchmark 1gb 20 v3 v4
+
+# Alle Versionen explizit mit 50 Iterationen
+dotnet run benchmark all 50
 ```
 
 #### Was macht das Benchmark-Tool?
@@ -338,13 +342,14 @@ Das Benchmark-Tool führt automatisch beide Tests durch: Zuerst wird jede Versio
 ```
 === Database Performance Benchmark ===
 Fill size: 200mb
-Test Key: key_00050000
 Read iterations per version: 10
+Versions: V1, V2, V3, V4
 
 === WRITE BENCHMARK (Filling Database) ===
 [... Write-Statistiken für alle Versionen ...]
 
 === READ BENCHMARK ===
+Keys are chosen automatically (middle entry of the written dataset).
 [... Read-Statistiken für alle Versionen ...]
 ```
 
@@ -570,6 +575,33 @@ Datenbanken sind im Kern nicht kompliziert. Das Schreiben ist trivial: Einfach a
 4. **V4**: Moderne SSTable-Architektur mit allen Features
 
 Jede Version lehrt uns etwas über die Trade-offs zwischen Einfachheit, Performance und Features. Und das Beste: Man kann alle Versionen in wenigen hundert Zeilen Code implementieren und selbst experimentieren!
+
+---
+
+## Von der Theorie zur Praxis: ZoneTree
+
+Die in diesem Artikel beschriebene **V4** mit SSTables ist bereits sehr nah an modernen produktionsreifen Datenbanken. Doch für echte Produktivumgebungen braucht es noch mehr: Compaction, Bloom-Filter, optimierte Concurrency-Control, und vieles mehr.
+
+Wenn du eine **produktionsreife Implementierung** dieser Konzepte suchst, schau dir [**ZoneTree**](https://github.com/koculu/ZoneTree) an. ZoneTree ist eine **persistent, high-performance, transactional, and ACID-compliant** ordered key-value database für .NET, die genau auf diesen Prinzipien aufbaut:
+
+**Was bietet ZoneTree?**
+- ✅ **LSM-Tree-Architektur** wie V4, aber vollständig ausgereift
+- ✅ **Außergewöhnliche Performance**: Mehrfach schneller als RocksDB, hundertfach schneller als SQLite
+- ✅ **Produktiv einsatzbereit**: ACID-Compliant mit vollständiger Transaction-Unterstützung
+- ✅ **Skalierbar**: Von kleinen bis zu massiven Datasets
+- ✅ **Pure C#**: Keine nativen Dependencies, einfach zu deployen
+- ✅ **Crash-Resilient**: Write-Ahead Log und Durability-Garantien
+- ✅ **Flexibel**: In-Memory oder auf Disk/Cloud-Storage
+- ✅ **Open Source**: MIT License
+
+**Performance-Highlights:**
+- 100 Millionen integer key-value pairs in **20 Sekunden** eingefügt (WAL mode = NONE)
+- Laden einer Datenbank mit 100 Millionen Einträgen in **812 Millisekunden**
+- Iteration über 100 Millionen Einträge in **24 Sekunden**
+
+ZoneTree zeigt, wohin die Reise führt, wenn man die Konzepte aus diesem Artikel konsequent zu Ende denkt und produktionsreif macht. Es ist ein hervorragendes Beispiel dafür, wie eine moderne embedded database engine in .NET aussehen kann.
+
+Mehr Informationen: [https://github.com/koculu/ZoneTree](https://github.com/koculu/ZoneTree)
 
 ---
 

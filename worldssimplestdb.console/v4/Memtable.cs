@@ -22,23 +22,32 @@ namespace worldssimplestdb.v4;
 public class Memtable
 {
     private readonly SortedDictionary<string, string> _data = new();
-    private readonly int _maxSize;
+    private readonly long _maxBytes;
+    private long _currentBytes;
     
-    public Memtable(int maxSize = SSTableFormat.DefaultMemtableFlushSize)
+    public Memtable(long maxBytes = SSTableFormat.DefaultMemtableFlushSizeBytes)
     {
-        _maxSize = maxSize;
+        _maxBytes = maxBytes;
     }
     
     public int Count => _data.Count;
     
-    public bool IsFull => _data.Count >= _maxSize;
+    public long ApproximateSizeBytes => _currentBytes;
+    
+    public bool IsFull => _currentBytes >= _maxBytes;
     
     /// <summary>
     /// Fügt einen Key-Value Eintrag zur Memtable hinzu
     /// </summary>
     public void Set(string key, string value)
     {
+        if (_data.TryGetValue(key, out var existingValue))
+        {
+            _currentBytes -= EstimateBytes(key, existingValue);
+        }
+        
         _data[key] = value;
+        _currentBytes += EstimateBytes(key, value);
     }
     
     /// <summary>
@@ -63,6 +72,15 @@ public class Memtable
     public void Clear()
     {
         _data.Clear();
+        _currentBytes = 0;
+    }
+
+    private static long EstimateBytes(string key, string value)
+    {
+        // Schätzung auf Basis UTF-8 Encoding + 8 Byte Length Prefix Overhead (Key + Value)
+        int keyBytes = System.Text.Encoding.UTF8.GetByteCount(key);
+        int valueBytes = System.Text.Encoding.UTF8.GetByteCount(value);
+        return keyBytes + valueBytes + sizeof(int) * 2;
     }
 }
 

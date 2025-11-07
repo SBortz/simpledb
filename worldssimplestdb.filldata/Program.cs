@@ -17,17 +17,19 @@ if (args.Length < 4)
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  Fill data: FillData <version> <size> <minValueLen> <maxValueLen>");
-    Console.WriteLine("  Benchmark: FillData benchmark [fillSize] [testKey] [iterations]");
+    Console.WriteLine("  Benchmark: FillData benchmark [fillSize] [iterations] [v1|v2|v3|v4|all]");
     Console.WriteLine();
     Console.WriteLine("Fill data examples:");
     Console.WriteLine("  FillData v4 10mb 50 200");
     Console.WriteLine("  FillData v1 200mb 50 200");
     Console.WriteLine();
     Console.WriteLine("Benchmark examples:");
-    Console.WriteLine("  FillData benchmark                    # Fill with 200mb, test with default key, 10 iterations");
-    Console.WriteLine("  FillData benchmark 10mb               # Fill with 10mb");
-    Console.WriteLine("  FillData benchmark 10mb key_00050000  # Fill with 10mb, test specific key");
-    Console.WriteLine("  FillData benchmark 10mb key_00050000 20  # Fill with 10mb, 20 iterations");
+    Console.WriteLine("  FillData benchmark                    # 200mb, all versions, 10 iterations");
+    Console.WriteLine("  FillData benchmark 10mb               # 10mb, all versions");
+    Console.WriteLine("  FillData benchmark 10mb 20            # 10mb, 20 iterations");
+    Console.WriteLine("  FillData benchmark v2                 # Only version 2");
+    Console.WriteLine("  FillData benchmark 1gb v3 v4          # 1gb, versions 3 and 4");
+    Console.WriteLine("  FillData benchmark all 50             # All versions, 50 iterations");
     return;
 }
 
@@ -212,7 +214,7 @@ async Task<(long writtenBytes, int entryCount)> FillV4(long targetSize, int minL
     
     await using var db = new WorldsSimplestDbV4(
         dataDirectory: dataDir,
-        memtableFlushSize: 10000
+        memtableFlushSizeBytes: 100 * 1024 * 1024
     );
     
     // Initialisiere asynchron (WAL-Recovery, etc.)
@@ -235,8 +237,8 @@ async Task<(long writtenBytes, int entryCount)> FillV4(long targetSize, int minL
         long estimatedBytes = 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // WAL
         estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // SSTable Data
         estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 8; // SSTable Index Entry
-        // SSTable Header (20 Bytes pro Datei, ~10000 Einträge pro SSTable) = ~0.002 Bytes pro Entry
-        // Wir ignorieren diesen kleinen Overhead für die Schätzung
+        // SSTable Header sowie Index-Overhead fallen zusätzlich an, sind im Vergleich aber klein.
+        // Wir ignorieren diesen geringen Overhead für die Schätzung.
         
         writtenBytes += estimatedBytes;
         entryCount++;
@@ -266,25 +268,53 @@ string GenerateRandomValue(Random random, int minLen, int maxLen)
 
 async Task RunBenchmarkAsync(string[] args)
 {
-    // Parse arguments: [fillSize] [testKey] [iterations]
     string fillSize = "200mb";
-    string testKey = "key_00050000";
     int iterations = 10;
+    var selectedVersions = new List<string>();
+    var versionSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    bool versionsSpecified = false;
     
     foreach (var arg in args)
     {
-        if (arg.StartsWith("key_"))
+        var token = arg.ToLowerInvariant();
+        
+        if (token == "all")
         {
-            testKey = arg;
+            versionsSpecified = false;
+            selectedVersions.Clear();
+            versionSet.Clear();
+            continue;
         }
-        else if (arg.EndsWith("mb") || arg.EndsWith("kb") || arg.EndsWith("gb") || arg.EndsWith("b"))
+        
+        if (TryParseVersionArgument(token, out var version))
         {
-            fillSize = arg;
+            if (!versionSet.Contains(version))
+            {
+                versionSet.Add(version);
+                selectedVersions.Add(version);
+            }
+            versionsSpecified = true;
+            continue;
         }
-        else if (int.TryParse(arg, out int iter))
+        
+        if (IsSizeToken(token))
+        {
+            fillSize = token;
+            continue;
+        }
+        
+        if (int.TryParse(token, out int iter))
         {
             iterations = iter;
+            continue;
         }
+        
+        Console.WriteLine($"Warning: Ignoring unknown argument '{arg}'.");
+    }
+    
+    if (!versionsSpecified || selectedVersions.Count == 0)
+    {
+        selectedVersions = new List<string> { "V1", "V2", "V3", "V4" };
     }
     
     long targetSizeBytes = ParseSize(fillSize);
@@ -296,42 +326,42 @@ async Task RunBenchmarkAsync(string[] args)
     
     Console.WriteLine("=== Database Performance Benchmark ===");
     Console.WriteLine($"Fill size: {fillSize}");
-    Console.WriteLine($"Test Key: {testKey}");
     Console.WriteLine($"Read iterations per version: {iterations}");
+    Console.WriteLine($"Versions: {string.Join(", ", selectedVersions)}");
     Console.WriteLine();
     
     // Benchmark Write Performance (Fill)
     Console.WriteLine("=== WRITE BENCHMARK (Filling Database) ===");
-    await BenchmarkWrite("V1", targetSizeBytes, 50, 200);
-    await BenchmarkWrite("V2", targetSizeBytes, 50, 200);
-    await BenchmarkWrite("V3", targetSizeBytes, 50, 200);
-    await BenchmarkWrite("V4", targetSizeBytes, 50, 200);
+    var writeResults = new Dictionary<string, (long writtenBytes, int entryCount)>();
+    
+    foreach (var version in selectedVersions)
+    {
+        var result = await BenchmarkWrite(version, targetSizeBytes, 50, 200);
+        writeResults[version] = result;
+    }
     
     Console.WriteLine();
     Console.WriteLine("=== READ BENCHMARK ===");
+    Console.WriteLine("Keys are chosen automatically (middle entry of the written dataset).");
     
-    // Benchmark Read Performance
-    await BenchmarkRead("V1", testKey, iterations);
-    await BenchmarkRead("V2", testKey, iterations);
-    
-    // V3 needs index building
-    Console.WriteLine("\n=== Benchmarking V3 ===");
-    Console.Write("  Building index");
-    var indexStore = new IndexStore();
-    indexStore.Load((msg) => Console.Write("."));
-    var swIndex = Stopwatch.StartNew();
-    swIndex.Stop();
-    Console.WriteLine($" done ({swIndex.ElapsedMilliseconds}ms)");
-    
-    await BenchmarkRead("V3", testKey, iterations, indexStore);
-    
-    await BenchmarkRead("V4", testKey, iterations);
+    foreach (var version in selectedVersions)
+    {
+        if (!writeResults.TryGetValue(version, out var result) || result.entryCount <= 0)
+        {
+            Console.WriteLine($"\n=== Benchmarking {version} Read ===");
+            Console.WriteLine("  Skipping: No data written");
+            continue;
+        }
+        
+        string testKey = BuildTestKey(result.entryCount);
+        await BenchmarkRead(version, testKey, iterations);
+    }
     
     Console.WriteLine();
     Console.WriteLine("=== Benchmark Complete ===");
 }
 
-async Task BenchmarkWrite(string version, long targetSizeBytes, int minValueLen, int maxValueLen)
+async Task<(long writtenBytes, int entryCount)> BenchmarkWrite(string version, long targetSizeBytes, int minValueLen, int maxValueLen)
 {
     Console.WriteLine($"\n=== Benchmarking {version} Write ===");
     
@@ -363,7 +393,7 @@ async Task BenchmarkWrite(string version, long targetSizeBytes, int minValueLen,
         if (result.entryCount == 0)
         {
             Console.WriteLine("  Error: No entries written");
-            return;
+            return result;
         }
         
         double mbWritten = result.writtenBytes / (1024.0 * 1024.0);
@@ -374,19 +404,35 @@ async Task BenchmarkWrite(string version, long targetSizeBytes, int minValueLen,
         Console.WriteLine($"  Time: {sw.ElapsedMilliseconds}ms ({sw.ElapsedMilliseconds / 1000.0:F2}s)");
         Console.WriteLine($"  Throughput: {mbPerSecond:F2} MB/s");
         Console.WriteLine($"  Avg time per entry: {(sw.ElapsedMilliseconds / (double)result.entryCount):F3}ms");
+        
+        return result;
     }
     catch (Exception ex)
     {
         Console.WriteLine($"  Error: {ex.Message}");
+        return (0, 0);
     }
 }
 
-async Task BenchmarkRead(string version, string testKey, int iterations, IIndexStore? indexStore = null)
+async Task BenchmarkRead(string version, string testKey, int iterations)
 {
     Console.WriteLine($"\n=== Benchmarking {version} Read ===");
     
     try
     {
+        IIndexStore? indexStore = null;
+        if (version == "V3")
+        {
+            indexStore = new IndexStore();
+            Console.Write("  Building index");
+            var swIndex = Stopwatch.StartNew();
+            indexStore.Load(_ => Console.Write("."));
+            swIndex.Stop();
+            Console.WriteLine($" done ({swIndex.ElapsedMilliseconds}ms)");
+        }
+        
+        Console.WriteLine($"  Key: {testKey}");
+        
         Func<Task<string?>> getOperation = version switch
         {
             "V1" => async () => {
@@ -439,4 +485,46 @@ async Task BenchmarkRead(string version, string testKey, int iterations, IIndexS
     {
         Console.WriteLine($"  Error: {ex.Message}");
     }
+}
+
+string BuildTestKey(int entryCount)
+{
+    if (entryCount <= 0)
+        return "key_00000000";
+    
+    int index = entryCount / 2;
+    if (index >= entryCount)
+        index = entryCount - 1;
+    if (index < 0)
+        index = 0;
+    
+    return $"key_{index:D8}";
+}
+
+bool TryParseVersionArgument(string token, out string version)
+{
+    version = token switch
+    {
+        "v1" or "1" or "version1" => "V1",
+        "v2" or "2" or "version2" => "V2",
+        "v3" or "3" or "version3" => "V3",
+        "v4" or "4" or "version4" => "V4",
+        _ => string.Empty
+    };
+    
+    return !string.IsNullOrEmpty(version);
+}
+
+bool IsSizeToken(string token)
+{
+    if (token.EndsWith("kb") && long.TryParse(token[..^2], out _))
+        return true;
+    if (token.EndsWith("mb") && long.TryParse(token[..^2], out _))
+        return true;
+    if (token.EndsWith("gb") && long.TryParse(token[..^2], out _))
+        return true;
+    if (token.EndsWith("b") && !token.EndsWith("kb") && !token.EndsWith("mb") && !token.EndsWith("gb") && long.TryParse(token[..^1], out _))
+        return true;
+    
+    return false;
 }
