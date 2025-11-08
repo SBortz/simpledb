@@ -325,6 +325,92 @@ public class WorldsSimplestDbV4 : IDatabase, IAsyncDisposable
             await _currentFlushTask;
         }
     }
+
+    /// <summary>
+    /// Führt eine vollständige SSTable-Compaction durch (alle Tabellen werden zusammengeführt).
+    /// </summary>
+    public async Task CompactAsync()
+    {
+        // Stelle sicher, dass keine Daten mehr in der Memtable liegen.
+        await FlushAsync();
+
+        var mergedEntries = new Dictionary<string, string>(StringComparer.Ordinal);
+        var oldReaders = new List<SSTableReader>();
+        var oldFiles = new List<string>();
+        string? newSstableFile = null;
+        SSTableReader? newReader = null;
+        bool compactionPerformed = false;
+
+        await _writeLock.WaitAsync();
+        await _readLock.WaitAsync();
+        try
+        {
+            if (_sstables.Count <= 1)
+            {
+                return;
+            }
+
+            compactionPerformed = true;
+            oldReaders = _sstables.ToList();
+            oldFiles = oldReaders.Select(r => r.Filename).ToList();
+
+            // Älteste zuerst, damit neuere Werte ältere überschreiben.
+            for (int i = oldReaders.Count - 1; i >= 0; i--)
+            {
+                foreach (var entry in oldReaders[i].ReadAllEntries())
+                {
+                    mergedEntries[entry.Key] = entry.Value;
+                }
+            }
+
+            _sstables.Clear();
+
+            if (mergedEntries.Count > 0)
+            {
+                var compactedMemtable = new Memtable(long.MaxValue);
+                foreach (var kvp in mergedEntries.OrderBy(kvp => kvp.Key, StringComparer.Ordinal))
+                {
+                    compactedMemtable.Set(kvp.Key, kvp.Value);
+                }
+
+                newSstableFile = await SSTableWriter.FlushAsync(compactedMemtable, _dataDirectory);
+                newReader = new SSTableReader(newSstableFile);
+                _sstables.Add(newReader);
+            }
+        }
+        finally
+        {
+            _readLock.Release();
+            _writeLock.Release();
+        }
+
+        if (!compactionPerformed)
+            return;
+
+        // Aufräumen außerhalb der Locks, um Blockierungen zu vermeiden.
+        foreach (var reader in oldReaders)
+        {
+            reader.Dispose();
+        }
+
+        foreach (var file in oldFiles)
+        {
+            if (newSstableFile != null && string.Equals(file, newSstableFile, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Could not delete SSTable {file}: {ex.Message}");
+            }
+        }
+    }
     
     /// <summary>
     /// Gibt Statistiken über die Datenbank zurück

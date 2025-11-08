@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 
 namespace worldssimplestdb.v4;
@@ -14,11 +15,12 @@ public class SSTableReader : IDisposable
 {
     private readonly string _filename;
     private readonly List<IndexEntry> _index = new();
+    private int _entryCount;
     private readonly long _indexOffset; // Offset des Index-Sections (für End-Begrenzung beim Scan)
     private bool _disposed = false;
     
     public string Filename => _filename;
-    public int EntryCount => _index.Count;
+    public int EntryCount => _entryCount;
     public DateTime CreationTime { get; private set; }
     
     private record IndexEntry(string Key, long Offset);
@@ -48,7 +50,7 @@ public class SSTableReader : IDisposable
         if (version != SSTableFormat.Version)
             throw new InvalidDataException($"Unsupported SSTable version: {version}");
         
-        int entryCount = br.ReadInt32();
+        _entryCount = br.ReadInt32();
         int indexEntryCount = br.ReadInt32(); // Anzahl der Index-Einträge (Sparse-Index)
         long indexOffset = br.ReadInt64();
         
@@ -153,6 +155,30 @@ public class SSTableReader : IDisposable
     public IEnumerable<string> GetAllKeys()
     {
         return _index.Select(e => e.Key);
+    }
+
+    /// <summary>
+    /// Enumeriert alle Key-Value-Paare dieser SSTable in Sortierreihenfolge.
+    /// </summary>
+    public IEnumerable<KeyValuePair<string, string>> ReadAllEntries()
+    {
+        using var fs = new FileStream(_filename, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 64 * 1024);
+        using var br = new BinaryReader(fs, Encoding.UTF8);
+
+        fs.Seek(SSTableFormat.HeaderSize, SeekOrigin.Begin);
+
+        while (fs.Position < _indexOffset)
+        {
+            int keyLen = br.ReadInt32();
+            byte[] keyBytes = br.ReadBytes(keyLen);
+            int valueLen = br.ReadInt32();
+            byte[] valueBytes = br.ReadBytes(valueLen);
+
+            string key = Encoding.UTF8.GetString(keyBytes);
+            string value = Encoding.UTF8.GetString(valueBytes);
+
+            yield return new KeyValuePair<string, string>(key, value);
+        }
     }
     
     public void Dispose()

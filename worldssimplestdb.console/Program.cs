@@ -262,9 +262,25 @@ async Task<bool> ExecuteCommand(IDatabase database, string[] args, bool currentE
             Available commands:
               set <key> <value>         - Store a key-value pair
               get <key>                 - Get value by key
+              compact                   - Merge SSTables (V4 only, fully blocking)
               help                      - Show this help
               exit/quit                 - Exit the program (flushes and cleans up)
             """);
+            return false;
+
+        case "compact":
+            if (database is WorldsSimplestDbV4 v4Db)
+            {
+                Console.WriteLine("Starting compaction (this may take a while)...");
+                var sw = Stopwatch.StartNew();
+                await v4Db.CompactAsync();
+                sw.Stop();
+                Console.WriteLine($"Compaction completed in {sw.ElapsedMilliseconds}ms.");
+            }
+            else
+            {
+                Console.WriteLine("Compaction is only supported for database version V4.");
+            }
             return false;
             
         case "exit":

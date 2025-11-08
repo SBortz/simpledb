@@ -230,17 +230,17 @@ async Task<(long writtenBytes, int entryCount)> FillV4(long targetSize, int minL
         
         await db.SetAsync(key, value);
         
-        // Schätzung der geschriebenen Bytes (inkl. WAL + SSTable Overhead)
-        // WAL: 4+keyLen+4+valueLen Bytes pro Entry
-        // SSTable: Wird später geflusht, aber wir zählen es schon
-        // Zähle WAL-Format (wird sofort geschrieben) + SSTable-Format (wird später geflusht)
-        long estimatedBytes = 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // WAL
-        estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 4 + Encoding.UTF8.GetByteCount(value); // SSTable Data
-        estimatedBytes += 4 + Encoding.UTF8.GetByteCount(key) + 8; // SSTable Index Entry
-        // SSTable Header sowie Index-Overhead fallen zusätzlich an, sind im Vergleich aber klein.
-        // Wir ignorieren diesen geringen Overhead für die Schätzung.
-        
-        writtenBytes += estimatedBytes;
+        int keyBytes = Encoding.UTF8.GetByteCount(key);
+        int valueBytes = Encoding.UTF8.GetByteCount(value);
+
+        // Schätzung der finalen SSTable-Größe (einmaliges Schreiben auf Disk)
+        long sstableDataBytes = 4 + keyBytes + 4 + valueBytes;
+
+        // Sparse-Index-Einträge entstehen nur für jeden N-ten Key.
+        bool createsIndexEntry = (entryCount % SSTableFormat.SparseIndexDensity) == 0;
+        long indexBytes = createsIndexEntry ? 4 + keyBytes + 8 : 0;
+
+        writtenBytes += sstableDataBytes + indexBytes;
         entryCount++;
         
         // Progress basierend auf tatsächlich geschriebenen Bytes (näherungsweise)
