@@ -218,31 +218,6 @@ dotnet run v3 100mb 10 100
 - Non-blocking writes: new writes continue to new memtable during flush
 - Background flush: old memtable flushes asynchronously without blocking
 
-## Future Improvements
-
-### Compaction for V4 (Not Implemented)
-
-**Compaction** is a critical feature for SSTable-based databases that is currently missing in V4. It would be the next evolutionary step to improve performance and reduce storage overhead.
-
-**What is Compaction?**
-Compaction is the process of merging multiple SSTables into fewer, larger SSTables. This helps:
-- **Reduce Read Amplification**: Fewer files to search during reads
-- **Remove Duplicate/Deleted Keys**: Consolidate multiple versions of the same key
-- **Free Disk Space**: Remove obsolete entries and compact storage
-- **Improve Performance**: Fewer files mean faster binary searches
-
-**Why it's needed:**
-- Without compaction, SSTables accumulate over time, increasing read amplification
-- Old versions of keys remain in older SSTables, wasting space
-- Deleted keys (if implemented) remain in SSTables until compaction removes them
-
-**Potential Implementation Strategy:**
-- Level-based compaction (like LevelDB/RocksDB): Organize SSTables into levels
-- Size-tiered compaction: Merge SSTables of similar sizes
-- Background compaction: Run asynchronously without blocking writes
-
-This would be a natural next step for V4 to evolve into a production-ready database implementation.
-
 ## Performance Characteristics
 
 | Version | Write | Read | Startup | Memory | Best For |

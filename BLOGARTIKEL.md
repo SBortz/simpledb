@@ -584,25 +584,10 @@ Die in diesem Artikel beschriebene **V4** mit SSTables ist bereits sehr nah an m
 
 Wenn du eine **produktionsreife Implementierung** dieser Konzepte suchst, schau dir [**ZoneTree**](https://github.com/koculu/ZoneTree) an. ZoneTree ist eine **persistent, high-performance, transactional, and ACID-compliant** ordered key-value database für .NET, die genau auf diesen Prinzipien aufbaut:
 
-**Was bietet ZoneTree?**
-- ✅ **LSM-Tree-Architektur** wie V4, aber vollständig ausgereift
-- ✅ **Außergewöhnliche Performance**: Mehrfach schneller als RocksDB, hundertfach schneller als SQLite
-- ✅ **Produktiv einsatzbereit**: ACID-Compliant mit vollständiger Transaction-Unterstützung
-- ✅ **Skalierbar**: Von kleinen bis zu massiven Datasets
-- ✅ **Pure C#**: Keine nativen Dependencies, einfach zu deployen
-- ✅ **Crash-Resilient**: Write-Ahead Log und Durability-Garantien
-- ✅ **Flexibel**: In-Memory oder auf Disk/Cloud-Storage
-- ✅ **Open Source**: MIT License
-
-**Performance-Highlights:**
-- 100 Millionen integer key-value pairs in **20 Sekunden** eingefügt (WAL mode = NONE)
-- Laden einer Datenbank mit 100 Millionen Einträgen in **812 Millisekunden**
-- Iteration über 100 Millionen Einträge in **24 Sekunden**
-
 ZoneTree zeigt, wohin die Reise führt, wenn man die Konzepte aus diesem Artikel konsequent zu Ende denkt und produktionsreif macht. Es ist ein hervorragendes Beispiel dafür, wie eine moderne embedded database engine in .NET aussehen kann.
 
 Mehr Informationen: [https://github.com/koculu/ZoneTree](https://github.com/koculu/ZoneTree)
 
 ---
 
-*Dieser Artikel basiert auf dem [World's Simplest Database](https://github.com/...) Projekt, das alle vier Versionen als C#-Implementierungen bereitstellt.*
+*Dieser Artikel basiert auf dem [World's Simplest Database](https://github.com/SBortz/worlds-simplest-db) Projekt, das alle vier Versionen als C#-Implementierungen bereitstellt.*

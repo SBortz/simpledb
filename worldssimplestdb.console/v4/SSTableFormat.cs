@@ -25,7 +25,7 @@ public static class SSTableFormat
     /// Sparse-Index Dichte: Nur jeder N-te Key wird im Index gespeichert
     /// z.B. SparseIndexDensity = 16 bedeutet: Nur jeder 16. Key ist im Index
     /// </summary>
-    public const int SparseIndexDensity = 16;
+    public const int SparseIndexDensity = 128;
 
     public const int HeaderSize = 24; // Erweitert um IndexEntryCount (4 Bytes)
 }
